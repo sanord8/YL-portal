@@ -1,0 +1,31 @@
+{
+  "app": {
+    "name": "YL Portal",
+    "description": "Employee Portal and Expense Management"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "movements": "Movements",
+    "reports": "Reports",
+    "settings": "Settings"
+  },
+  "actions": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "filter": "Filter",
+    "export": "Export",
+    "import": "Import"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "success": "Success",
+    "confirm": "Are you sure?",
+    "yes": "Yes",
+    "no": "No"
+  }
+}
