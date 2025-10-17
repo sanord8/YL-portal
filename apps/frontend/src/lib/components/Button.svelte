@@ -1,21 +1,26 @@
 <script lang="ts">
-  export let variant: 'primary' | 'secondary' | 'outline' = 'primary';
+  export let variant: 'primary' | 'secondary' | 'outline' | 'black' = 'primary';
   export let size: 'sm' | 'md' | 'lg' = 'md';
   export let disabled = false;
   export let type: 'button' | 'submit' | 'reset' = 'button';
 
-  const baseClasses = 'inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
+  const baseClasses = 'inline-flex items-center justify-center font-semibold rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md';
 
   const variantClasses = {
-    primary: 'bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500',
-    secondary: 'bg-gray-600 text-white hover:bg-gray-700 focus:ring-gray-500',
-    outline: 'border-2 border-gray-300 text-gray-700 hover:bg-gray-50 focus:ring-gray-500',
+    // YoungLife green primary button
+    primary: 'bg-yl-green text-white hover:bg-yl-green-accent focus:ring-yl-green',
+    // Professional black button
+    black: 'bg-yl-black text-white hover:bg-yl-gray-800 focus:ring-yl-gray-600',
+    // Light secondary button
+    secondary: 'bg-yl-gray-100 text-yl-black hover:bg-yl-gray-200 focus:ring-yl-gray-300',
+    // Outline button with green accent
+    outline: 'border-2 border-yl-green text-yl-green hover:bg-yl-green hover:text-white focus:ring-yl-green',
   };
 
   const sizeClasses = {
     sm: 'px-3 py-1.5 text-sm',
-    md: 'px-4 py-2 text-base',
-    lg: 'px-6 py-3 text-lg',
+    md: 'px-5 py-2.5 text-base',
+    lg: 'px-8 py-3.5 text-lg',
   };
 
   $: classes = `${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]}`;

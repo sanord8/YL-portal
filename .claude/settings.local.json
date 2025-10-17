@@ -1,7 +1,19 @@
 {
   "permissions": {
     "allow": [
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(docker version:*)",
+      "Bash(test:*)",
+      "Bash(docker compose:*)",
+      "Bash(sudo usermod:*)",
+      "Bash(sudo docker compose:*)",
+      "Bash(command -v pnpm:*)",
+      "Bash(pnpm --version:*)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm --filter backend db:generate:*)",
+      "Bash(docker ps:*)",
+      "WebFetch(domain:www.younglife.org)",
+      "WebFetch(domain:cdn.brandfetch.io)"
     ],
     "deny": [],
     "ask": []

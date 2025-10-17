@@ -4,13 +4,55 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 47.4% 11.2%;
+    /* YoungLife Brand Colors */
+    --background: 0 0% 100%; /* White */
+    --foreground: 0 0% 0%; /* Black for text */
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 0%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 0%;
+
+    /* YoungLife Green (#90c83c) as primary */
+    --primary: 79 59% 51%; /* #90c83c */
+    --primary-foreground: 0 0% 100%; /* White text on green */
+
+    /* Lighter green for secondary */
+    --secondary: 79 59% 65%; /* Lighter variant */
+    --secondary-foreground: 0 0% 0%;
+
+    --muted: 0 0% 96%; /* #f5f5f5 */
+    --muted-foreground: 0 0% 33%; /* #555 */
+    --accent: 79 62% 57%; /* #92c549 - brighter green */
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 90%; /* Light gray borders */
+    --input: 0 0% 90%;
+    --ring: 79 59% 51%; /* Green focus ring */
+    --radius: 0.5rem;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 0 0% 7%; /* Near black */
+    --foreground: 0 0% 96%;
+    --card: 0 0% 10%;
+    --card-foreground: 0 0% 96%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 79 59% 51%; /* Keep green in dark mode */
+    --primary-foreground: 0 0% 0%; /* Black text on green */
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 96%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 60%;
+    --accent: 79 62% 57%;
+    --accent-foreground: 0 0% 0%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 96%;
+    --border: 0 0% 20%;
+    --input: 0 0% 20%;
+    --ring: 79 59% 51%;
   }
 
   * {
@@ -20,5 +62,15 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: 'rlig' 1, 'calt' 1;
+    font-family: 'Montserrat', system-ui, -apple-system, sans-serif;
+  }
+
+  /* Professional typography with black headings */
+  h1, h2, h3, h4, h5, h6 {
+    @apply text-yl-black font-bold;
+  }
+
+  .dark h1, .dark h2, .dark h3, .dark h4, .dark h5, .dark h6 {
+    @apply text-white;
   }
 }
