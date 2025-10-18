@@ -13,7 +13,11 @@
       "Bash(pnpm --filter backend db:generate:*)",
       "Bash(docker ps:*)",
       "WebFetch(domain:www.younglife.org)",
-      "WebFetch(domain:cdn.brandfetch.io)"
+      "WebFetch(domain:cdn.brandfetch.io)",
+      "WebFetch(domain:docs.brandfetch.com)",
+      "Bash(curl:*)",
+      "Bash(pnpm db:push:*)",
+      "Bash(pnpm db:generate:*)"
     ],
     "deny": [],
     "ask": []

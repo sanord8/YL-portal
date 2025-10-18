@@ -21,7 +21,17 @@ model User {
   email        String    @unique
   name         String
   passwordHash String    @map("password_hash")
-  emailVerified Boolean  @default(false) @map("email_verified")
+
+  // Email verification
+  emailVerified       Boolean   @default(false) @map("email_verified")
+  emailVerifyToken    String?   @unique @map("email_verify_token")
+  emailVerifyExpires  DateTime? @map("email_verify_expires")
+
+  // Password reset
+  passwordResetToken  String?   @unique @map("password_reset_token")
+  passwordResetExpires DateTime? @map("password_reset_expires")
+
+  // Two-factor authentication
   twoFactorEnabled Boolean @default(false) @map("two_factor_enabled")
   twoFactorSecret String? @map("two_factor_secret")
 
@@ -38,12 +48,15 @@ model User {
   @@map("users")
   @@index([email])
   @@index([deletedAt])
+  @@index([emailVerifyToken])
+  @@index([passwordResetToken])
 }
 
 model Session {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  expiresAt DateTime @map("expires_at")
+  id         String   @id  // Removed @db.Uuid to support Lucia-style session IDs
+  userId     String   @map("user_id") @db.Uuid
+  expiresAt  DateTime @map("expires_at")
+  rememberMe Boolean  @default(false) @map("remember_me") // Track "remember me" preference
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -228,6 +241,7 @@ model Movement {
   attachments  Attachment[]
 
   @@map("movements")
+  @@index([transactionDate])  // Standalone index for date-range queries
   @@index([areaId, transactionDate])
   @@index([userId])
   @@index([departmentId])

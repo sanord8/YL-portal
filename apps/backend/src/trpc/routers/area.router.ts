@@ -1,0 +1,370 @@
+import { z } from 'zod';
+import { router, protectedProcedure, verifiedProcedure } from '../trpc';
+import { TRPCError } from '@trpc/server';
+
+/**
+ * Area Router
+ * CRUD operations for financial areas
+ */
+export const areaRouter = router({
+  /**
+   * List all areas accessible to the user
+   */
+  list: protectedProcedure.query(async ({ ctx }) => {
+    // Get user's accessible areas
+    const userAreas = await ctx.prisma.userArea.findMany({
+      where: { userId: ctx.user.id },
+      include: {
+        area: {
+          include: {
+            _count: {
+              select: {
+                movements: true,
+                users: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return userAreas.map((ua) => ua.area);
+  }),
+
+  /**
+   * List all areas (admin only - for now, all authenticated users)
+   * TODO: Add admin role check
+   */
+  listAll: protectedProcedure.query(async ({ ctx }) => {
+    const areas = await ctx.prisma.area.findMany({
+      where: {
+        deletedAt: null,
+      },
+      include: {
+        _count: {
+          select: {
+            movements: true,
+            users: true,
+            departments: true,
+          },
+        },
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
+
+    return areas;
+  }),
+
+  /**
+   * Get area by ID
+   */
+  getById: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const area = await ctx.prisma.area.findUnique({
+        where: { id: input.id },
+        include: {
+          departments: {
+            where: { deletedAt: null },
+            orderBy: { name: 'asc' },
+          },
+          users: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          _count: {
+            select: {
+              movements: true,
+            },
+          },
+        },
+      });
+
+      if (!area) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Area not found',
+        });
+      }
+
+      // Check if user has access to this area
+      const hasAccess = await ctx.prisma.userArea.findFirst({
+        where: {
+          userId: ctx.user.id,
+          areaId: input.id,
+        },
+      });
+
+      if (!hasAccess) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You do not have access to this area',
+        });
+      }
+
+      return area;
+    }),
+
+  /**
+   * Create new area
+   * TODO: Restrict to admin users
+   */
+  create: verifiedProcedure
+    .input(
+      z.object({
+        name: z.string().min(1).max(100),
+        code: z.string().min(1).max(10).toUpperCase(),
+        description: z.string().max(500).optional(),
+        currency: z.string().length(3).default('EUR'),
+        budget: z.number().int().nonnegative().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Check if code already exists
+      const existing = await ctx.prisma.area.findFirst({
+        where: {
+          code: input.code,
+          deletedAt: null,
+        },
+      });
+
+      if (existing) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: 'An area with this code already exists',
+        });
+      }
+
+      // Create area
+      const area = await ctx.prisma.area.create({
+        data: {
+          name: input.name,
+          code: input.code,
+          description: input.description,
+          currency: input.currency,
+          budget: input.budget,
+        },
+      });
+
+      // Automatically assign creator to the area
+      await ctx.prisma.userArea.create({
+        data: {
+          userId: ctx.user.id,
+          areaId: area.id,
+        },
+      });
+
+      return area;
+    }),
+
+  /**
+   * Update area
+   * TODO: Restrict to admin users
+   */
+  update: verifiedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        name: z.string().min(1).max(100).optional(),
+        code: z.string().min(1).max(10).toUpperCase().optional(),
+        description: z.string().max(500).optional(),
+        currency: z.string().length(3).optional(),
+        budget: z.number().int().nonnegative().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { id, ...data } = input;
+
+      // Check if area exists
+      const existing = await ctx.prisma.area.findUnique({
+        where: { id },
+      });
+
+      if (!existing || existing.deletedAt) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Area not found',
+        });
+      }
+
+      // If updating code, check for conflicts
+      if (data.code && data.code !== existing.code) {
+        const codeExists = await ctx.prisma.area.findFirst({
+          where: {
+            code: data.code,
+            id: { not: id },
+            deletedAt: null,
+          },
+        });
+
+        if (codeExists) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'An area with this code already exists',
+          });
+        }
+      }
+
+      // Update area
+      const updated = await ctx.prisma.area.update({
+        where: { id },
+        data,
+      });
+
+      return updated;
+    }),
+
+  /**
+   * Delete area (soft delete)
+   * TODO: Restrict to admin users
+   */
+  delete: verifiedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      // Check if area exists
+      const existing = await ctx.prisma.area.findUnique({
+        where: { id: input.id },
+        include: {
+          _count: {
+            select: {
+              movements: true,
+            },
+          },
+        },
+      });
+
+      if (!existing || existing.deletedAt) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Area not found',
+        });
+      }
+
+      // Check if area has movements
+      if (existing._count.movements > 0) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: 'Cannot delete area with existing movements',
+        });
+      }
+
+      // Soft delete
+      await ctx.prisma.area.update({
+        where: { id: input.id },
+        data: { deletedAt: new Date() },
+      });
+
+      return { success: true };
+    }),
+
+  /**
+   * Assign user to area
+   * TODO: Restrict to admin users
+   */
+  assignUser: verifiedProcedure
+    .input(
+      z.object({
+        areaId: z.string().uuid(),
+        userId: z.string().uuid(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Check if area exists
+      const area = await ctx.prisma.area.findUnique({
+        where: { id: input.areaId },
+      });
+
+      if (!area || area.deletedAt) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Area not found',
+        });
+      }
+
+      // Check if user exists
+      const user = await ctx.prisma.user.findUnique({
+        where: { id: input.userId },
+      });
+
+      if (!user || user.deletedAt) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'User not found',
+        });
+      }
+
+      // Check if already assigned
+      const existing = await ctx.prisma.userArea.findFirst({
+        where: {
+          userId: input.userId,
+          areaId: input.areaId,
+        },
+      });
+
+      if (existing) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: 'User is already assigned to this area',
+        });
+      }
+
+      // Create assignment
+      const assignment = await ctx.prisma.userArea.create({
+        data: {
+          userId: input.userId,
+          areaId: input.areaId,
+        },
+      });
+
+      return assignment;
+    }),
+
+  /**
+   * Unassign user from area
+   * TODO: Restrict to admin users
+   */
+  unassignUser: verifiedProcedure
+    .input(
+      z.object({
+        areaId: z.string().uuid(),
+        userId: z.string().uuid(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Find assignment
+      const assignment = await ctx.prisma.userArea.findFirst({
+        where: {
+          userId: input.userId,
+          areaId: input.areaId,
+        },
+      });
+
+      if (!assignment) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'User is not assigned to this area',
+        });
+      }
+
+      // Delete assignment
+      await ctx.prisma.userArea.delete({
+        where: {
+          userId_areaId: {
+            userId: input.userId,
+            areaId: input.areaId,
+          },
+        },
+      });
+
+      return { success: true };
+    }),
+});

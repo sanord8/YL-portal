@@ -29,10 +29,13 @@
 - [x] Configure SvelteKit
 - [x] Configure Vite with API proxy
 - [x] Setup Tailwind CSS
-- [x] Create app layout
+- [x] Create app layout (with responsive nav + mobile menu)
 - [x] Create dashboard page
 - [x] Create Button component
-- [ ] Test frontend dev server
+- [x] Create FormInput component
+- [x] Implement YoungLife corporate branding
+- [x] Create responsive mobile design
+- [x] Test frontend dev server
 
 ### Shared Packages
 - [x] Create @yl-portal/types package
@@ -64,14 +67,20 @@
 ### Authentication System
 - [x] Create User and Session tables
 - [x] Create auth middleware skeleton
-- [ ] Implement Lucia Auth v3 integration
-- [ ] Create login endpoint
-- [ ] Create registration endpoint
-- [ ] Implement password hashing (Argon2)
-- [ ] Add email verification flow
+- [x] ~~Implement Lucia Auth v3 integration~~ Built custom session-based auth
+- [x] Create login endpoint
+- [x] Create registration endpoint
+- [x] Implement password hashing (Argon2)
+- [x] Add session refresh logic (auto-extends within 24h)
+- [x] Create auth store for frontend state management
+- [x] Create UserDropdown component
+- [x] Create ProtectedRoute component
+- [x] Create login/register pages with validation
+- [x] Create profile page
+- [x] Add email verification flow ✅
+- [x] Create password reset flow ✅
+- [x] Implement email service with branded templates ✅
 - [ ] Implement 2FA with TOTP
-- [ ] Create password reset flow
-- [ ] Add session refresh logic
 - [ ] Implement device fingerprinting
 
 ### Database Architecture
@@ -126,14 +135,16 @@
 
 ---
 
-## Phase 2: High-Performance API Layer (Weeks 4-5) ⏳
+## Phase 2: High-Performance API Layer (Weeks 4-5) 🔄
 
 ### API Architecture
-- [ ] Choose between tRPC and GraphQL
-- [ ] Setup tRPC router (if selected)
-- [ ] Setup GraphQL with Pothos (if selected)
-- [ ] Create type-safe API client
-- [ ] Implement cursor-based pagination
+- [x] Choose between tRPC and GraphQL (✅ tRPC selected)
+- [x] Setup tRPC router
+- [x] Create tRPC context with Prisma and user session
+- [x] Create procedure helpers (public, protected, verified)
+- [x] Create type-safe API client for frontend
+- [x] Implement cursor-based pagination (movements list)
+- [x] Integrate tRPC with Hono using fetch adapter
 - [ ] Add optimistic updates support
 - [ ] Create real-time subscriptions
 - [ ] Generate OpenAPI documentation
@@ -233,7 +244,7 @@
 
 ---
 
-## Phase 4: Financial Core with Safety Guards (Weeks 8-10) ⏳
+## Phase 4: Financial Core with Safety Guards (Weeks 8-10) 🔄
 
 ### Transaction Safety
 - [x] Create Movement table
@@ -246,12 +257,16 @@
 - [ ] Test concurrent transaction handling
 
 ### Movement Operations
-- [x] Create movement endpoint (basic)
-- [ ] Add movement validation
+- [x] Create movement tRPC router with CRUD operations ✅
+- [x] Create movement list endpoint with pagination ✅
+- [x] Create movement detail endpoint ✅
+- [x] Add movement validation (Zod schemas) ✅
+- [x] Create movement creation endpoint ✅
+- [x] Add movement editing endpoint ✅
+- [x] Create movement deletion (soft delete) ✅
+- [x] Implement area-based access control ✅
 - [ ] Implement movement approval workflow
 - [ ] Create movement cancellation
-- [ ] Add movement editing (with audit)
-- [ ] Create movement deletion (soft)
 - [ ] Add bulk movement import
 - [ ] Create movement templates
 
@@ -309,21 +324,50 @@
 - [ ] Add heartbeat/ping-pong
 
 ### Dashboard Backend
-- [ ] Create dashboard data API
-- [ ] Implement parallel query execution
+- [x] Create dashboard tRPC router ✅
+- [x] Implement getOverviewStats endpoint (income, expenses, pending, areas) ✅
+- [x] Implement getBalances endpoint (per-area balances) ✅
+- [x] Create recent movements endpoint (with limit) ✅
+- [x] Implement expense breakdown by category ✅
+- [x] Implement income vs expense trend (monthly) ✅
+- [x] Add area-based filtering and access control ✅
+- [ ] Implement parallel query execution optimization
 - [ ] Create materialized views for dashboards
-- [ ] Add real-time balance updates
-- [ ] Create recent movements endpoint
+- [ ] Add real-time balance updates (WebSockets)
 - [ ] Add notification system
 
 ### Dashboard Frontend
 - [x] Create basic dashboard page
-- [ ] Add balance cards
+- [x] Add balance cards with area-specific data ✅
+- [x] Create StatsCard component (income, expenses, pending, areas) ✅
+- [x] Create BalanceCard component with progress bars ✅
+- [x] Add recent movements widget ✅
+- [x] Add expense breakdown by category ✅
+- [x] Create loading states and skeleton screens ✅
+- [x] Add error handling for all dashboard sections ✅
+- [x] Implement auto-refresh (5 minutes) ✅
+- [x] Responsive design (mobile + desktop) ✅
 - [ ] Create movement list with virtual scrolling
-- [ ] Add real-time updates integration
-- [ ] Create loading states
-- [ ] Add error boundaries
-- [ ] Implement skeleton screens
+- [ ] Add real-time updates integration (WebSockets)
+
+### Movements UI
+- [x] Create movements list page ✅
+  - [x] Table view for desktop ✅
+  - [x] Card view for mobile ✅
+  - [x] Pagination with "Load More" ✅
+  - [x] Filtering by type and status ✅
+  - [x] Empty state handling ✅
+- [x] Create movement form page ✅
+  - [x] All required fields validation ✅
+  - [x] Optional fields (category, reference, department) ✅
+  - [x] Currency auto-update from area ✅
+  - [x] Character counter for description ✅
+- [x] Create movement detail page ✅
+  - [x] Full movement information display ✅
+  - [x] Related movements (parent/children) ✅
+  - [x] Attachments list ✅
+  - [x] Delete with confirmation modal ✅
+  - [x] Edit button (disabled for non-pending) ✅
 
 ### Charts & Visualization
 - [ ] Choose chart library (Recharts/Victory)
@@ -639,14 +683,59 @@
 
 ## Current Sprint Focus
 
-**Priority Tasks:**
-1. Install dependencies (`pnpm install`)
-2. Start Docker services and initialize database
-3. Implement Lucia Auth integration
-4. Complete i18n integration
-5. Create tRPC router setup
+**✅ Recently Completed:**
+- Full authentication system with Argon2 password hashing ✅
+- Login/Register pages with client-side validation ✅
+- Auth middleware and protected routes ✅
+- Session management with auto-refresh ✅
+- Profile page with edit functionality ✅
+- YoungLife corporate branding implementation ✅
+- Responsive mobile design with hamburger menu ✅
+- **Password reset flow with email tokens** ✅
+- **Email verification system with branded emails** ✅
+- **Email service with console logging (dev) / production-ready** ✅
+- **tRPC setup with type-safe API** ✅
+- **Movement CRUD operations (tRPC router)** ✅
+- **Financial movements list UI (responsive)** ✅
+- **Movement creation form with validation** ✅
+- **Movement detail page with delete** ✅
+- **Cursor-based pagination** ✅
+- **Dashboard with real data** ✅
+  - Overview stats (income, expenses, pending, areas) ✅
+  - Balance cards per area ✅
+  - Recent movements widget ✅
+  - Expense breakdown by category ✅
+  - Auto-refresh every 5 minutes ✅
+  - Loading skeletons and error handling ✅
 
-**Next Milestone:** Complete Phase 1 (Security Foundation) by Week 3
+**🔴 CRITICAL BUGS FIXED:**
+1. ✅ **Session ID Type Mismatch** - Fixed Prisma schema to allow string session IDs
+2. ✅ **Add CSRF Protection** - Added Hono CSRF middleware with origin validation
+3. ✅ **Fix Redis Connection Handling** - Implemented resilient Redis with graceful degradation
+4. ✅ **Enforce Password Complexity** - Backend regex validation for strong passwords
+5. ✅ **Request Timeout Middleware** - Added 30-second timeout to all requests
+
+**⚠️ HIGH PRIORITY (Next Sprint):**
+1. ✅ ~~Implement email verification flow~~ COMPLETED
+2. ✅ ~~Create password reset functionality~~ COMPLETED
+3. ✅ ~~Create tRPC router setup~~ COMPLETED
+4. ✅ ~~Fix rate limiter IP identification~~ COMPLETED (production/dev split)
+5. Create area and department management UI
+6. Implement 2FA with TOTP
+7. Add session expiry info to API responses
+
+**📋 MEDIUM PRIORITY:**
+- Complete i18n integration (svelte-i18n + i18next)
+- Add audit logging for all auth actions
+- Implement connection pooling configuration
+- Add health check for dependencies (DB + Redis)
+- Implement file upload for movement attachments
+- Add movement approval workflow
+- Create area and department CRUD UI
+
+**Next Milestone:** Complete Phase 3 (Permission System) and Phase 4 (Financial Core)
+
+**📊 Progress:** Phase 0 ✅ 100% | Phase 1 🔄 ~85% | Phase 2 🔄 ~65% | Phase 4 🔄 ~50% | Phase 5 🔄 ~40%
 
 ---
 

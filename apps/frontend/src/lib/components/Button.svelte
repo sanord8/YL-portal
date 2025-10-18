@@ -4,6 +4,10 @@
   export let disabled = false;
   export let type: 'button' | 'submit' | 'reset' = 'button';
 
+  // Allow custom classes to be passed
+  let className = '';
+  export { className as class };
+
   const baseClasses = 'inline-flex items-center justify-center font-semibold rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md';
 
   const variantClasses = {
@@ -23,7 +27,7 @@
     lg: 'px-8 py-3.5 text-lg',
   };
 
-  $: classes = `${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]}`;
+  $: classes = `${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]} ${className}`;
 </script>
 
 <button {type} {disabled} class={classes} on:click>

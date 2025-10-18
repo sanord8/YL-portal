@@ -2,8 +2,15 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
+import { getCookie } from 'hono/cookie';
+import { timeout } from 'hono/timeout';
+import { csrf } from 'hono/csrf';
 import { corsMiddleware } from './middleware/cors';
 import { rateLimiter } from './middleware/rateLimit';
+import authRouter from './routes/auth';
+import { fetchRequestHandler } from '@trpc/server/adapters/fetch';
+import { appRouter } from './trpc';
+import { createContext } from './trpc/context';
 
 const app = new Hono();
 
@@ -13,6 +20,9 @@ const app = new Hono();
 
 // Logging
 app.use('*', logger());
+
+// Request timeout (30 seconds)
+app.use('*', timeout(30000));
 
 // Security headers (CSP, X-Frame-Options, etc.)
 app.use('*', secureHeaders({
@@ -31,6 +41,11 @@ app.use('*', secureHeaders({
 
 // CORS
 app.use('*', corsMiddleware);
+
+// CSRF Protection
+app.use('*', csrf({
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+}));
 
 // Rate limiting - 100 requests per minute
 app.use('*', rateLimiter({ windowMs: 60 * 1000, maxRequests: 100 }));
@@ -56,8 +71,18 @@ app.get('/api/v1/hello', (c) => {
   });
 });
 
-// TODO: Add tRPC router
-// app.use('/api/trpc/*', trpcHandler);
+// Authentication routes
+app.route('/api/auth', authRouter);
+
+// tRPC routes - Type-safe API endpoints
+app.all('/api/trpc/*', async (c) => {
+  return fetchRequestHandler({
+    endpoint: '/api/trpc',
+    req: c.req.raw,
+    router: appRouter,
+    createContext: () => createContext(c),
+  });
+});
 
 // 404 handler
 app.notFound((c) => {
