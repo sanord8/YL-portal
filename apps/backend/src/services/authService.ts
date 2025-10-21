@@ -78,6 +78,7 @@ export async function validateSession(sessionId: string) {
           name: true,
           emailVerified: true,
           twoFactorEnabled: true,
+          isAdmin: true,
           createdAt: true,
           updatedAt: true,
           deletedAt: true,

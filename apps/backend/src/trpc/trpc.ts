@@ -50,3 +50,50 @@ export const verifiedProcedure = protectedProcedure.use(async (opts) => {
     ctx,
   });
 });
+
+/**
+ * Admin procedure - requires authentication + isAdmin flag
+ */
+export const adminProcedure = protectedProcedure.use(async (opts) => {
+  const { ctx } = opts;
+
+  // Check isAdmin from context (already loaded from session)
+  if (!ctx.user.isAdmin) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Admin access required',
+    });
+  }
+
+  return opts.next({
+    ctx,
+  });
+});
+
+/**
+ * Helper function to check if user has manager/admin role in an area
+ * Global admins (isAdmin: true) automatically have manager permissions for all areas
+ */
+export async function isAreaManager(
+  prisma: TRPCContext['prisma'],
+  user: { id: string; isAdmin: boolean },
+  areaId: string
+): Promise<boolean> {
+  // Global admins have manager permissions for all areas
+  if (user.isAdmin) {
+    return true;
+  }
+
+  // Otherwise check for explicit area assignment with manager/admin role
+  const userArea = await prisma.userArea.findFirst({
+    where: {
+      userId: user.id,
+      areaId,
+      areaRole: {
+        in: ['MANAGER', 'ADMIN'],
+      },
+    },
+  });
+
+  return !!userArea;
+}

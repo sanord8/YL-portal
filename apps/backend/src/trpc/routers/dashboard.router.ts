@@ -9,20 +9,30 @@ export const dashboardRouter = router({
   /**
    * Get overview statistics
    * Returns: total income, total expenses, pending count, areas count
+   * Admins see stats across ALL areas, regular users see only their assigned areas
    */
   getOverviewStats: protectedProcedure.query(async ({ ctx }) => {
-    // Get user's accessible areas
-    const userAreas = await ctx.prisma.userArea.findMany({
-      where: { userId: ctx.user.id },
-      select: { areaId: true },
-    });
+    let areaIds: string[];
 
-    const areaIds = userAreas.map((ua) => ua.areaId);
+    if (ctx.user.isAdmin) {
+      // Admins see all areas
+      const allAreas = await ctx.prisma.area.findMany({
+        where: { deletedAt: null },
+        select: { id: true },
+      });
+      areaIds = allAreas.map((a) => a.id);
+    } else {
+      // Regular users see only their assigned areas
+      const userAreas = await ctx.prisma.userArea.findMany({
+        where: { userId: ctx.user.id },
+        select: { areaId: true },
+      });
+      areaIds = userAreas.map((ua) => ua.areaId);
+    }
 
     // Get total income (approved only)
     const incomeResult = await ctx.prisma.movement.aggregate({
       where: {
-        userId: ctx.user.id,
         areaId: { in: areaIds },
         type: 'INCOME',
         status: 'APPROVED',
@@ -34,7 +44,6 @@ export const dashboardRouter = router({
     // Get total expenses (approved only)
     const expenseResult = await ctx.prisma.movement.aggregate({
       where: {
-        userId: ctx.user.id,
         areaId: { in: areaIds },
         type: 'EXPENSE',
         status: 'APPROVED',
@@ -46,7 +55,6 @@ export const dashboardRouter = router({
     // Get pending movements count
     const pendingCount = await ctx.prisma.movement.count({
       where: {
-        userId: ctx.user.id,
         areaId: { in: areaIds },
         status: 'PENDING',
         deletedAt: null,
@@ -69,29 +77,46 @@ export const dashboardRouter = router({
   /**
    * Get balances per area
    * Returns array of areas with their current balances
+   * Admins see ALL areas, regular users see only their assigned areas
    */
   getBalances: protectedProcedure.query(async ({ ctx }) => {
-    // Get user's accessible areas
-    const userAreas = await ctx.prisma.userArea.findMany({
-      where: { userId: ctx.user.id },
-      include: {
-        area: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            currency: true,
+    let areas: Array<{ id: string; name: string; code: string; currency: string }>;
+    let areaIds: string[];
+
+    if (ctx.user.isAdmin) {
+      // Admins see all areas
+      areas = await ctx.prisma.area.findMany({
+        where: { deletedAt: null },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          currency: true,
+        },
+      });
+      areaIds = areas.map((a) => a.id);
+    } else {
+      // Regular users see only their assigned areas
+      const userAreas = await ctx.prisma.userArea.findMany({
+        where: { userId: ctx.user.id },
+        include: {
+          area: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+              currency: true,
+            },
           },
         },
-      },
-    });
-
-    const areaIds = userAreas.map((ua) => ua.areaId);
+      });
+      areas = userAreas.map((ua) => ua.area);
+      areaIds = userAreas.map((ua) => ua.areaId);
+    }
 
     // Get movements grouped by area
     const movements = await ctx.prisma.movement.findMany({
       where: {
-        userId: ctx.user.id,
         areaId: { in: areaIds },
         status: 'APPROVED',
         deletedAt: null,
@@ -104,8 +129,8 @@ export const dashboardRouter = router({
     });
 
     // Calculate balance for each area
-    const areaBalances = userAreas.map((userArea) => {
-      const areaMovements = movements.filter((m) => m.areaId === userArea.areaId);
+    const areaBalances = areas.map((area) => {
+      const areaMovements = movements.filter((m) => m.areaId === area.id);
 
       const income = areaMovements
         .filter((m) => m.type === 'INCOME')
@@ -118,7 +143,7 @@ export const dashboardRouter = router({
       const balance = income - expenses;
 
       return {
-        area: userArea.area,
+        area,
         income,
         expenses,
         balance,
@@ -131,6 +156,7 @@ export const dashboardRouter = router({
   /**
    * Get recent movements
    * Returns latest movements across all user areas
+   * Admins see movements from ALL areas, regular users see only their assigned areas
    */
   getRecentMovements: protectedProcedure
     .input(
@@ -139,17 +165,26 @@ export const dashboardRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      // Get user's accessible areas
-      const userAreas = await ctx.prisma.userArea.findMany({
-        where: { userId: ctx.user.id },
-        select: { areaId: true },
-      });
+      let areaIds: string[];
 
-      const areaIds = userAreas.map((ua) => ua.areaId);
+      if (ctx.user.isAdmin) {
+        // Admins see all areas
+        const allAreas = await ctx.prisma.area.findMany({
+          where: { deletedAt: null },
+          select: { id: true },
+        });
+        areaIds = allAreas.map((a) => a.id);
+      } else {
+        // Regular users see only their assigned areas
+        const userAreas = await ctx.prisma.userArea.findMany({
+          where: { userId: ctx.user.id },
+          select: { areaId: true },
+        });
+        areaIds = userAreas.map((ua) => ua.areaId);
+      }
 
       const movements = await ctx.prisma.movement.findMany({
         where: {
-          userId: ctx.user.id,
           areaId: { in: areaIds },
           deletedAt: null,
         },
@@ -174,6 +209,7 @@ export const dashboardRouter = router({
   /**
    * Get expense breakdown by category
    * Returns expenses grouped by category with percentages
+   * Admins see expenses from ALL areas, regular users see only their assigned areas
    */
   getExpenseBreakdown: protectedProcedure
     .input(
@@ -182,13 +218,23 @@ export const dashboardRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      // Get user's accessible areas
-      const userAreas = await ctx.prisma.userArea.findMany({
-        where: { userId: ctx.user.id },
-        select: { areaId: true },
-      });
+      let areaIds: string[];
 
-      const areaIds = userAreas.map((ua) => ua.areaId);
+      if (ctx.user.isAdmin) {
+        // Admins see all areas
+        const allAreas = await ctx.prisma.area.findMany({
+          where: { deletedAt: null },
+          select: { id: true },
+        });
+        areaIds = allAreas.map((a) => a.id);
+      } else {
+        // Regular users see only their assigned areas
+        const userAreas = await ctx.prisma.userArea.findMany({
+          where: { userId: ctx.user.id },
+          select: { areaId: true },
+        });
+        areaIds = userAreas.map((ua) => ua.areaId);
+      }
 
       // Calculate date range
       const startDate = new Date();
@@ -197,7 +243,6 @@ export const dashboardRouter = router({
       // Get all expenses in date range
       const expenses = await ctx.prisma.movement.findMany({
         where: {
-          userId: ctx.user.id,
           areaId: { in: areaIds },
           type: 'EXPENSE',
           status: 'APPROVED',
@@ -242,6 +287,7 @@ export const dashboardRouter = router({
   /**
    * Get income vs expense trend
    * Returns monthly income and expenses for chart visualization
+   * Admins see trends from ALL areas, regular users see only their assigned areas
    */
   getIncomeVsExpense: protectedProcedure
     .input(
@@ -250,13 +296,23 @@ export const dashboardRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      // Get user's accessible areas
-      const userAreas = await ctx.prisma.userArea.findMany({
-        where: { userId: ctx.user.id },
-        select: { areaId: true },
-      });
+      let areaIds: string[];
 
-      const areaIds = userAreas.map((ua) => ua.areaId);
+      if (ctx.user.isAdmin) {
+        // Admins see all areas
+        const allAreas = await ctx.prisma.area.findMany({
+          where: { deletedAt: null },
+          select: { id: true },
+        });
+        areaIds = allAreas.map((a) => a.id);
+      } else {
+        // Regular users see only their assigned areas
+        const userAreas = await ctx.prisma.userArea.findMany({
+          where: { userId: ctx.user.id },
+          select: { areaId: true },
+        });
+        areaIds = userAreas.map((ua) => ua.areaId);
+      }
 
       // Calculate date range
       const startDate = new Date();
@@ -265,7 +321,6 @@ export const dashboardRouter = router({
       // Get all movements in date range
       const movements = await ctx.prisma.movement.findMany({
         where: {
-          userId: ctx.user.id,
           areaId: { in: areaIds },
           type: { in: ['INCOME', 'EXPENSE'] },
           status: 'APPROVED',

@@ -1,6 +1,29 @@
 import { z } from 'zod';
 import { router, protectedProcedure, verifiedProcedure } from '../trpc';
 import { TRPCError } from '@trpc/server';
+import { prisma } from '../../db/prisma';
+
+/**
+ * Get or create default role for user area assignments
+ */
+async function getDefaultRole() {
+  // Try to find existing default role
+  let role = await prisma.role.findFirst({
+    where: { name: 'Default' },
+  });
+
+  // Create if doesn't exist
+  if (!role) {
+    role = await prisma.role.create({
+      data: {
+        name: 'Default',
+        description: 'Default role for area access',
+      },
+    });
+  }
+
+  return role;
+}
 
 /**
  * Area Router
@@ -9,9 +32,31 @@ import { TRPCError } from '@trpc/server';
 export const areaRouter = router({
   /**
    * List all areas accessible to the user
+   * Admins see all areas, regular users see only their assigned areas
    */
   list: protectedProcedure.query(async ({ ctx }) => {
-    // Get user's accessible areas
+    // Admins have access to all areas
+    if (ctx.user.isAdmin) {
+      const areas = await ctx.prisma.area.findMany({
+        where: {
+          deletedAt: null,
+        },
+        include: {
+          _count: {
+            select: {
+              movements: true,
+              userAreas: true,
+            },
+          },
+        },
+        orderBy: {
+          name: 'asc',
+        },
+      });
+      return areas;
+    }
+
+    // Regular users only see their assigned areas
     const userAreas = await ctx.prisma.userArea.findMany({
       where: { userId: ctx.user.id },
       include: {
@@ -20,7 +65,7 @@ export const areaRouter = router({
             _count: {
               select: {
                 movements: true,
-                users: true,
+                userAreas: true,
               },
             },
           },
@@ -44,7 +89,7 @@ export const areaRouter = router({
         _count: {
           select: {
             movements: true,
-            users: true,
+            userAreas: true,
             departments: true,
           },
         },
@@ -70,7 +115,7 @@ export const areaRouter = router({
             where: { deletedAt: null },
             orderBy: { name: 'asc' },
           },
-          users: {
+          userAreas: {
             include: {
               user: {
                 select: {
@@ -84,6 +129,7 @@ export const areaRouter = router({
           _count: {
             select: {
               movements: true,
+              departments: true,
             },
           },
         },
@@ -96,19 +142,22 @@ export const areaRouter = router({
         });
       }
 
-      // Check if user has access to this area
-      const hasAccess = await ctx.prisma.userArea.findFirst({
-        where: {
-          userId: ctx.user.id,
-          areaId: input.id,
-        },
-      });
-
-      if (!hasAccess) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'You do not have access to this area',
+      // Admins have access to all areas
+      if (!ctx.user.isAdmin) {
+        // Check if user has access to this area
+        const hasAccess = await ctx.prisma.userArea.findFirst({
+          where: {
+            userId: ctx.user.id,
+            areaId: input.id,
+          },
         });
+
+        if (!hasAccess) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'You do not have access to this area',
+          });
+        }
       }
 
       return area;
@@ -125,7 +174,6 @@ export const areaRouter = router({
         code: z.string().min(1).max(10).toUpperCase(),
         description: z.string().max(500).optional(),
         currency: z.string().length(3).default('EUR'),
-        budget: z.number().int().nonnegative().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -144,6 +192,9 @@ export const areaRouter = router({
         });
       }
 
+      // Get default role for assignment
+      const defaultRole = await getDefaultRole();
+
       // Create area
       const area = await ctx.prisma.area.create({
         data: {
@@ -151,7 +202,6 @@ export const areaRouter = router({
           code: input.code,
           description: input.description,
           currency: input.currency,
-          budget: input.budget,
         },
       });
 
@@ -160,6 +210,7 @@ export const areaRouter = router({
         data: {
           userId: ctx.user.id,
           areaId: area.id,
+          roleId: defaultRole.id,
         },
       });
 
@@ -178,7 +229,6 @@ export const areaRouter = router({
         code: z.string().min(1).max(10).toUpperCase().optional(),
         description: z.string().max(500).optional(),
         currency: z.string().length(3).optional(),
-        budget: z.number().int().nonnegative().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -317,11 +367,15 @@ export const areaRouter = router({
         });
       }
 
+      // Get default role for assignment
+      const defaultRole = await getDefaultRole();
+
       // Create assignment
       const assignment = await ctx.prisma.userArea.create({
         data: {
           userId: input.userId,
           areaId: input.areaId,
+          roleId: defaultRole.id,
         },
       });
 

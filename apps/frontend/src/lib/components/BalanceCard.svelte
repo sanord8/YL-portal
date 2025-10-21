@@ -31,10 +31,10 @@
   class="bg-white rounded-lg shadow border border-gray-200 p-6 transition-all"
   class:hover:shadow-md={clickable}
   class:cursor-pointer={clickable}
-  on:click={handleClick}
-  on:keydown={(e) => e.key === 'Enter' && clickable && handleClick()}
-  role={clickable ? 'button' : 'article'}
-  tabindex={clickable ? 0 : -1}
+  on:click={clickable ? handleClick : undefined}
+  on:keydown={clickable ? (e) => e.key === 'Enter' && handleClick() : undefined}
+  role={clickable ? 'button' : undefined}
+  {...(clickable ? { tabindex: 0 } : {})}
 >
   <!-- Header -->
   <div class="flex items-center justify-between mb-4">

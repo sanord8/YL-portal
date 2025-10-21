@@ -7,6 +7,7 @@ export interface User {
   email: string;
   emailVerified: Date | null;
   twoFactorEnabled: boolean;
+  isAdmin: boolean;
   createdAt: Date;
 }
 

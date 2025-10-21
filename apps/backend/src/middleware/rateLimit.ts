@@ -113,7 +113,15 @@ export function rateLimiter(options: RateLimitOptions) {
   };
 }
 
-// Graceful shutdown
-process.on('beforeExit', async () => {
-  await redis.quit();
-});
+/**
+ * Close Redis connection gracefully
+ */
+export async function closeRedis(): Promise<void> {
+  try {
+    await redis.quit();
+  } catch (err) {
+    console.error('Error closing Redis connection:', err);
+    // Force disconnect if quit fails
+    redis.disconnect();
+  }
+}

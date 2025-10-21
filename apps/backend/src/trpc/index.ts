@@ -3,6 +3,8 @@ import { movementRouter } from './routers/movement.router';
 import { dashboardRouter } from './routers/dashboard.router';
 import { areaRouter } from './routers/area.router';
 import { departmentRouter } from './routers/department.router';
+import { userRouter } from './routers/user.router';
+import { adminRouter } from './routers/admin.router';
 
 /**
  * Main tRPC App Router
@@ -13,8 +15,9 @@ export const appRouter = router({
   dashboard: dashboardRouter,
   area: areaRouter,
   department: departmentRouter,
+  user: userRouter,
+  admin: adminRouter,
   // Future routers:
-  // user: userRouter,
   // report: reportRouter,
 });
 

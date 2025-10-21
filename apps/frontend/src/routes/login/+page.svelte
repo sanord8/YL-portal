@@ -148,15 +148,9 @@
       </form>
     </div>
 
-    <!-- Sign Up Link -->
+    <!-- Info Message -->
     <p class="text-center text-sm text-yl-gray-600">
-      Don't have an account?
-      <a
-        href="/register"
-        class="font-semibold text-yl-green hover:text-yl-green-accent transition-colors"
-      >
-        Create an account
-      </a>
+      Need an account? Contact your administrator
     </p>
   </div>
 </div>

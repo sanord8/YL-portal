@@ -9,6 +9,7 @@ import { TRPCError } from '@trpc/server';
 export const departmentRouter = router({
   /**
    * List all departments in user's accessible areas
+   * Admins see all departments, regular users see only departments from their assigned areas
    */
   list: protectedProcedure
     .input(
@@ -17,22 +18,34 @@ export const departmentRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      // Get user's accessible areas
-      const userAreas = await ctx.prisma.userArea.findMany({
-        where: { userId: ctx.user.id },
-        select: { areaId: true },
-      });
-
-      const areaIds = userAreas.map((ua) => ua.areaId);
-
       // Build where clause
       const where: any = {
-        areaId: { in: areaIds },
         deletedAt: null,
       };
 
+      // If filtering by specific area
       if (input.areaId) {
         where.areaId = input.areaId;
+      }
+
+      // Regular users: only show departments from their assigned areas
+      if (!ctx.user.isAdmin) {
+        const userAreas = await ctx.prisma.userArea.findMany({
+          where: { userId: ctx.user.id },
+          select: { areaId: true },
+        });
+
+        const areaIds = userAreas.map((ua) => ua.areaId);
+
+        // Add area filter only if not already filtered by specific area
+        if (!input.areaId) {
+          where.areaId = { in: areaIds };
+        } else {
+          // Verify user has access to the requested area
+          if (!areaIds.includes(input.areaId)) {
+            return []; // Return empty if user doesn't have access
+          }
+        }
       }
 
       const departments = await ctx.prisma.department.findMany({
@@ -43,6 +56,7 @@ export const departmentRouter = router({
               id: true,
               name: true,
               code: true,
+              currency: true,
             },
           },
           _count: {
@@ -57,7 +71,45 @@ export const departmentRouter = router({
         ],
       });
 
-      return departments;
+      // Calculate balances for each department (APPROVED + PENDING movements)
+      const departmentsWithBalances = await Promise.all(
+        departments.map(async (dept) => {
+          // Get income
+          const incomeResult = await ctx.prisma.movement.aggregate({
+            where: {
+              departmentId: dept.id,
+              type: 'INCOME',
+              status: { in: ['APPROVED', 'PENDING'] },
+              deletedAt: null,
+            },
+            _sum: { amount: true },
+          });
+
+          // Get expenses
+          const expenseResult = await ctx.prisma.movement.aggregate({
+            where: {
+              departmentId: dept.id,
+              type: 'EXPENSE',
+              status: { in: ['APPROVED', 'PENDING'] },
+              deletedAt: null,
+            },
+            _sum: { amount: true },
+          });
+
+          const income = incomeResult._sum.amount || 0;
+          const expenses = expenseResult._sum.amount || 0;
+          const balance = income - expenses;
+
+          return {
+            ...dept,
+            income,
+            expenses,
+            balance,
+          };
+        })
+      );
+
+      return departmentsWithBalances;
     }),
 
   /**
@@ -85,22 +137,55 @@ export const departmentRouter = router({
         });
       }
 
-      // Check if user has access to the area
-      const hasAccess = await ctx.prisma.userArea.findFirst({
-        where: {
-          userId: ctx.user.id,
-          areaId: department.areaId,
-        },
-      });
-
-      if (!hasAccess) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'You do not have access to this department',
+      // Admins have access to all departments
+      if (!ctx.user.isAdmin) {
+        // Check if user has access to the area
+        const hasAccess = await ctx.prisma.userArea.findFirst({
+          where: {
+            userId: ctx.user.id,
+            areaId: department.areaId,
+          },
         });
+
+        if (!hasAccess) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'You do not have access to this department',
+          });
+        }
       }
 
-      return department;
+      // Calculate balance (APPROVED + PENDING movements)
+      const incomeResult = await ctx.prisma.movement.aggregate({
+        where: {
+          departmentId: department.id,
+          type: 'INCOME',
+          status: { in: ['APPROVED', 'PENDING'] },
+          deletedAt: null,
+        },
+        _sum: { amount: true },
+      });
+
+      const expenseResult = await ctx.prisma.movement.aggregate({
+        where: {
+          departmentId: department.id,
+          type: 'EXPENSE',
+          status: { in: ['APPROVED', 'PENDING'] },
+          deletedAt: null,
+        },
+        _sum: { amount: true },
+      });
+
+      const income = incomeResult._sum.amount || 0;
+      const expenses = expenseResult._sum.amount || 0;
+      const balance = income - expenses;
+
+      return {
+        ...department,
+        income,
+        expenses,
+        balance,
+      };
     }),
 
   /**
@@ -114,23 +199,25 @@ export const departmentRouter = router({
         name: z.string().min(1).max(100),
         code: z.string().min(1).max(10).toUpperCase(),
         description: z.string().max(500).optional(),
-        budget: z.number().int().nonnegative().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Check if user has access to the area
-      const hasAccess = await ctx.prisma.userArea.findFirst({
-        where: {
-          userId: ctx.user.id,
-          areaId: input.areaId,
-        },
-      });
-
-      if (!hasAccess) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'You do not have access to this area',
+      // Admins have access to all areas
+      if (!ctx.user.isAdmin) {
+        // Check if user has access to the area
+        const hasAccess = await ctx.prisma.userArea.findFirst({
+          where: {
+            userId: ctx.user.id,
+            areaId: input.areaId,
+          },
         });
+
+        if (!hasAccess) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'You do not have access to this area',
+          });
+        }
       }
 
       // Check if area exists
@@ -168,7 +255,6 @@ export const departmentRouter = router({
           name: input.name,
           code: input.code,
           description: input.description,
-          budget: input.budget,
         },
         include: {
           area: true,
@@ -189,7 +275,6 @@ export const departmentRouter = router({
         name: z.string().min(1).max(100).optional(),
         code: z.string().min(1).max(10).toUpperCase().optional(),
         description: z.string().max(500).optional(),
-        budget: z.number().int().nonnegative().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -207,19 +292,22 @@ export const departmentRouter = router({
         });
       }
 
-      // Check if user has access to the area
-      const hasAccess = await ctx.prisma.userArea.findFirst({
-        where: {
-          userId: ctx.user.id,
-          areaId: existing.areaId,
-        },
-      });
-
-      if (!hasAccess) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'You do not have access to this department',
+      // Admins have access to all departments
+      if (!ctx.user.isAdmin) {
+        // Check if user has access to the area
+        const hasAccess = await ctx.prisma.userArea.findFirst({
+          where: {
+            userId: ctx.user.id,
+            areaId: existing.areaId,
+          },
         });
+
+        if (!hasAccess) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'You do not have access to this department',
+          });
+        }
       }
 
       // If updating code, check for conflicts
@@ -279,19 +367,22 @@ export const departmentRouter = router({
         });
       }
 
-      // Check if user has access to the area
-      const hasAccess = await ctx.prisma.userArea.findFirst({
-        where: {
-          userId: ctx.user.id,
-          areaId: existing.areaId,
-        },
-      });
-
-      if (!hasAccess) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'You do not have access to this department',
+      // Admins have access to all departments
+      if (!ctx.user.isAdmin) {
+        // Check if user has access to the area
+        const hasAccess = await ctx.prisma.userArea.findFirst({
+          where: {
+            userId: ctx.user.id,
+            areaId: existing.areaId,
+          },
         });
+
+        if (!hasAccess) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'You do not have access to this department',
+          });
+        }
       }
 
       // Check if department has movements

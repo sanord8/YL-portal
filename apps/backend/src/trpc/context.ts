@@ -1,4 +1,5 @@
 import { Context } from 'hono';
+import { getCookie } from 'hono/cookie';
 import { prisma } from '../db/prisma';
 import { validateSession, SESSION_COOKIE_NAME } from '../services/authService';
 
@@ -14,6 +15,7 @@ export interface TRPCContext {
     name: string;
     emailVerified: boolean;
     twoFactorEnabled: boolean;
+    isAdmin: boolean;
     createdAt: Date;
     updatedAt: Date;
     deletedAt: Date | null;
@@ -26,7 +28,7 @@ export interface TRPCContext {
  */
 export async function createContext(c: Context): Promise<TRPCContext> {
   // Get session from cookie
-  const sessionId = c.req.cookie(SESSION_COOKIE_NAME) || null;
+  const sessionId = getCookie(c, SESSION_COOKIE_NAME) || null;
 
   let user = null;
 

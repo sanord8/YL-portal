@@ -21,20 +21,39 @@
   let error = '';
   let validationErrors: Record<string, string> = {};
 
-  // Areas and departments (will be loaded from API in future)
+  // Areas and departments
   let areas: any[] = [];
   let departments: any[] = [];
+  let isLoadingAreas = true;
+  let isLoadingDepartments = false;
 
-  // Mock areas for now (TODO: Load from API)
-  onMount(() => {
-    // For now, show a helpful message
-    // In future, load areas from: await trpc.area.list.query()
-    areas = [
-      { id: '1', name: 'General Fund', code: 'GEN', currency: 'EUR' },
-      { id: '2', name: 'Youth Programs', code: 'YTH', currency: 'USD' },
-      { id: '3', name: 'Operations', code: 'OPS', currency: 'EUR' },
-    ];
+  onMount(async () => {
+    await loadAreas();
   });
+
+  async function loadAreas() {
+    try {
+      isLoadingAreas = true;
+      areas = await trpc.area.list.query();
+    } catch (err: any) {
+      console.error('Failed to load areas:', err);
+      error = 'Failed to load areas. Please refresh the page.';
+    } finally {
+      isLoadingAreas = false;
+    }
+  }
+
+  async function loadDepartments(areaId: string) {
+    try {
+      isLoadingDepartments = true;
+      departments = await trpc.department.list.query({ areaId });
+    } catch (err: any) {
+      console.error('Failed to load departments:', err);
+      // Don't set error - departments are optional
+    } finally {
+      isLoadingDepartments = false;
+    }
+  }
 
   function validateForm(): boolean {
     validationErrors = {};
@@ -126,10 +145,17 @@
     goto('/movements');
   }
 
-  function updateCurrencyFromArea() {
+  async function updateCurrencyFromArea() {
     const selectedArea = areas.find(a => a.id === areaId);
     if (selectedArea) {
       currency = selectedArea.currency;
+      // Load departments for this area
+      await loadDepartments(areaId);
+      // Reset department selection
+      departmentId = '';
+    } else {
+      departments = [];
+      departmentId = '';
     }
   }
 </script>
@@ -179,14 +205,17 @@
         on:change={updateCurrencyFromArea}
         class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yl-green focus:border-transparent"
         class:border-red-500={validationErrors.areaId}
+        disabled={isLoadingAreas}
       >
-        <option value="">Select an area...</option>
+        <option value="">{isLoadingAreas ? 'Loading areas...' : 'Select an area...'}</option>
         {#each areas as area}
           <option value={area.id}>{area.name} ({area.code})</option>
         {/each}
       </select>
       {#if validationErrors.areaId}
         <p class="text-xs text-red-600 mt-1">{validationErrors.areaId}</p>
+      {:else if areas.length === 0 && !isLoadingAreas}
+        <p class="text-xs text-yl-gray-600 mt-1">No areas available. Please contact an administrator.</p>
       {/if}
     </div>
 
@@ -324,7 +353,7 @@
           />
         </div>
 
-        <!-- Department (TODO: Load from API) -->
+        <!-- Department -->
         <div>
           <label for="department" class="block text-sm font-medium text-yl-black mb-2">
             Department
@@ -333,12 +362,24 @@
             id="department"
             bind:value={departmentId}
             class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yl-green focus:border-transparent"
+            disabled={!areaId || isLoadingDepartments}
           >
-            <option value="">None</option>
+            <option value="">
+              {#if !areaId}
+                Select an area first
+              {:else if isLoadingDepartments}
+                Loading departments...
+              {:else}
+                None
+              {/if}
+            </option>
             {#each departments as dept}
-              <option value={dept.id}>{dept.name}</option>
+              <option value={dept.id}>{dept.name} ({dept.code})</option>
             {/each}
           </select>
+          {#if areaId && departments.length === 0 && !isLoadingDepartments}
+            <p class="text-xs text-yl-gray-600 mt-1">No departments in this area</p>
+          {/if}
         </div>
       </div>
     </details>

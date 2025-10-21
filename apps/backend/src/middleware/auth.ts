@@ -1,4 +1,5 @@
 import { Context, Next } from 'hono';
+import { getCookie } from 'hono/cookie';
 import { prisma } from '../db/prisma';
 
 // Session cookie name
@@ -9,7 +10,7 @@ const SESSION_COOKIE_NAME = 'yl_session';
  */
 export async function authMiddleware(c: Context, next: Next) {
   const sessionId = c.req.header('Authorization')?.replace('Bearer ', '') ||
-                    c.req.cookie(SESSION_COOKIE_NAME);
+                    getCookie(c, SESSION_COOKIE_NAME);
 
   if (!sessionId) {
     return c.json({ error: 'Unauthorized', message: 'No session provided' }, 401);
@@ -52,7 +53,7 @@ export async function authMiddleware(c: Context, next: Next) {
  */
 export async function optionalAuthMiddleware(c: Context, next: Next) {
   const sessionId = c.req.header('Authorization')?.replace('Bearer ', '') ||
-                    c.req.cookie(SESSION_COOKIE_NAME);
+                    getCookie(c, SESSION_COOKIE_NAME);
 
   if (sessionId) {
     try {

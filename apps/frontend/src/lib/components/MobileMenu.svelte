@@ -13,10 +13,19 @@
   const navItems = [
     { href: '/', label: 'Dashboard' },
     { href: '/movements', label: 'Movements' },
+    { href: '/areas', label: 'Areas' },
+    { href: '/departments', label: 'Departments' },
     { href: '/reports', label: 'Reports' },
     { href: '/profile', label: 'Profile' },
     { href: '/settings', label: 'Settings' },
   ];
+
+  // Admin navigation item
+  const adminNavItem = { href: '/admin/users', label: 'Admin' };
+
+  $: displayNavItems = user?.isAdmin
+    ? [...navItems.slice(0, 5), adminNavItem, ...navItems.slice(5)]
+    : navItems;
 
   // Close menu when clicking a link
   function handleLinkClick() {
@@ -77,7 +86,7 @@
 
         <!-- Navigation links -->
         <ul class="space-y-2 flex-1">
-          {#each navItems as item}
+          {#each displayNavItems as item}
             <li>
               <a
                 href={item.href}
@@ -103,15 +112,13 @@
         <!-- Auth buttons for non-authenticated users -->
         <div class="flex-1 flex flex-col justify-center space-y-4 px-4">
           <a href="/login" on:click={handleLinkClick}>
-            <Button variant="secondary" size="lg" class="w-full">
+            <Button variant="primary" size="lg" class="w-full">
               Login
             </Button>
           </a>
-          <a href="/register" on:click={handleLinkClick}>
-            <Button variant="primary" size="lg" class="w-full">
-              Sign Up
-            </Button>
-          </a>
+          <p class="text-center text-sm text-yl-gray-400 mt-4">
+            Need an account? Contact your administrator
+          </p>
         </div>
       {/if}
 

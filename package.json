@@ -9,14 +9,18 @@
     "pnpm": ">=8.0.0"
   },
   "scripts": {
-    "dev": "pnpm --parallel -r dev",
+    "dev": "concurrently --kill-others-on-fail --handle-input --prefix-colors \"bgBlue.bold,bgMagenta.bold\" --names \"backend,frontend\" \"pnpm --filter backend dev\" \"pnpm --filter frontend dev\"",
+    "dev:clean": "pnpm kill-port 3000 && pnpm dev",
+    "kill-port": "node -e \"const {execSync} = require('child_process'); const port = process.argv[1]; try { const cmd = process.platform === 'win32' ? `for /f \\\"tokens=5\\\" %a in ('netstat -aon ^| findstr :${port}') do taskkill /F /PID %a` : `lsof -ti:${port} | xargs kill -9`; execSync(cmd, {stdio: 'inherit'}); } catch(e) { console.log('No process found on port', port); }\" --",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
-    "clean": "pnpm -r clean && rm -rf node_modules"
+    "clean": "pnpm -r clean && rm -rf node_modules",
+    "setup:admin": "pnpm --filter backend setup:admin"
   },
   "devDependencies": {
+    "concurrently": "^9.2.1",
     "prettier": "^3.2.5",
     "typescript": "^5.4.2"
   },

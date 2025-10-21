@@ -1,17 +1,48 @@
 <script lang="ts">
   import '../app.css';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
+  import { browser } from '$app/environment';
   import { authStore } from '$lib/stores/authStore';
+  import { websocketStore } from '$lib/stores/websocketStore';
   import MobileMenu from '$lib/components/MobileMenu.svelte';
   import UserDropdown from '$lib/components/UserDropdown.svelte';
   import Button from '$lib/components/Button.svelte';
+  import ToastContainer from '$lib/components/ToastContainer.svelte';
 
   let isMobileMenuOpen = false;
 
-  // Initialize auth on mount
+  // Initialize auth and WebSocket on mount
   onMount(() => {
     authStore.checkAuth();
+
+    // Connect to WebSocket if authenticated
+    if (browser && $authStore.isAuthenticated) {
+      // Get session ID from cookie
+      const cookies = document.cookie.split(';');
+      const sessionCookie = cookies.find((c) => c.trim().startsWith('auth_session='));
+      if (sessionCookie) {
+        const sessionId = sessionCookie.split('=')[1];
+        websocketStore.connect(sessionId);
+      }
+    }
   });
+
+  // Cleanup WebSocket on unmount
+  onDestroy(() => {
+    if (browser) {
+      websocketStore.disconnect();
+    }
+  });
+
+  // Watch for authentication changes to connect/disconnect WebSocket
+  $: if (browser && $authStore.isAuthenticated && !$websocketStore.connected) {
+    const cookies = document.cookie.split(';');
+    const sessionCookie = cookies.find((c) => c.trim().startsWith('auth_session='));
+    if (sessionCookie) {
+      const sessionId = sessionCookie.split('=')[1];
+      websocketStore.connect(sessionId);
+    }
+  }
 
   $: isAuthenticated = $authStore.isAuthenticated;
   $: isLoading = $authStore.isLoading;
@@ -56,6 +87,9 @@
 </script>
 
 <div class="min-h-screen bg-gray-50 flex flex-col">
+  <!-- Toast Container -->
+  <ToastContainer />
+
   <!-- Email Verification Banner -->
   {#if needsEmailVerification}
     <div class="bg-yellow-50 border-b border-yellow-200">
@@ -120,23 +154,38 @@
               Movements
             </a>
             <a
+              href="/areas"
+              class="text-white hover:text-yl-green-accent transition-colors duration-200 font-medium"
+            >
+              Areas
+            </a>
+            <a
+              href="/departments"
+              class="text-white hover:text-yl-green-accent transition-colors duration-200 font-medium"
+            >
+              Departments
+            </a>
+            <a
               href="/reports"
               class="text-white hover:text-yl-green-accent transition-colors duration-200 font-medium"
             >
               Reports
             </a>
+            {#if user?.isAdmin}
+              <a
+                href="/admin/users"
+                class="text-white hover:text-yl-green-accent transition-colors duration-200 font-medium"
+              >
+                Admin
+              </a>
+            {/if}
             <!-- User dropdown -->
             <UserDropdown />
           {:else if !isLoading}
             <!-- Auth buttons for non-authenticated users -->
             <a href="/login">
-              <Button variant="secondary" size="sm">
-                Login
-              </Button>
-            </a>
-            <a href="/register">
               <Button variant="primary" size="sm">
-                Sign Up
+                Login
               </Button>
             </a>
           {/if}

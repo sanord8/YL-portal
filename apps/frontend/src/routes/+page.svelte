@@ -5,24 +5,28 @@
   import { trpc } from '$lib/trpc';
   import StatsCard from '$lib/components/StatsCard.svelte';
   import BalanceCard from '$lib/components/BalanceCard.svelte';
+  import LineChart from '$lib/components/LineChart.svelte';
 
   // Loading states
   let isLoadingStats = true;
   let isLoadingBalances = true;
   let isLoadingRecent = true;
   let isLoadingBreakdown = true;
+  let isLoadingTrend = true;
 
   // Data
   let stats: any = null;
   let balances: any[] = [];
   let recentMovements: any[] = [];
   let expenseBreakdown: any = null;
+  let trendData: any[] = [];
 
   // Errors
   let statsError = '';
   let balancesError = '';
   let recentError = '';
   let breakdownError = '';
+  let trendError = '';
 
   $: isAuthenticated = $authStore.isAuthenticated;
 
@@ -47,6 +51,7 @@
     loadBalances();
     loadRecentMovements();
     loadExpenseBreakdown();
+    loadTrend();
   }
 
   async function loadStats() {
@@ -98,6 +103,25 @@
       breakdownError = err.message || 'Failed to load expense breakdown';
     } finally {
       isLoadingBreakdown = false;
+    }
+  }
+
+  async function loadTrend() {
+    try {
+      isLoadingTrend = true;
+      trendError = '';
+      const rawData = await trpc.dashboard.getIncomeVsExpense.query({ months: 6 });
+      // Transform data for LineChart component
+      trendData = rawData.map(item => ({
+        label: item.month,
+        value1: item.income,
+        value2: item.expenses,
+      }));
+    } catch (err: any) {
+      console.error('Failed to load trend data:', err);
+      trendError = err.message || 'Failed to load trend data';
+    } finally {
+      isLoadingTrend = false;
     }
   }
 
@@ -156,12 +180,11 @@
             Sign In
           </button>
         </a>
-        <a href="/register">
-          <button class="w-full sm:w-auto px-6 py-3 bg-white text-yl-black font-semibold rounded-lg border-2 border-yl-green hover:bg-gray-50 transition-colors">
-            Create Account
-          </button>
-        </a>
       </div>
+
+      <p class="text-sm text-yl-gray-600 mt-4">
+        Need an account? Contact your administrator
+      </p>
     </div>
 
     <!-- Features Section -->
@@ -296,6 +319,28 @@
             />
           {/each}
         </div>
+      {/if}
+    </div>
+
+    <!-- Income vs Expenses Trend Chart -->
+    <div class="bg-white rounded-lg shadow border border-gray-200 p-6">
+      <h2 class="text-xl font-semibold text-yl-black mb-4">Income vs Expenses (Last 6 Months)</h2>
+
+      {#if isLoadingTrend}
+        <div class="flex justify-center items-center py-12">
+          <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-yl-green"></div>
+        </div>
+      {:else if trendError}
+        <p class="text-sm text-red-600 text-center py-8">{trendError}</p>
+      {:else}
+        <LineChart
+          data={trendData}
+          label1="Income"
+          label2="Expenses"
+          color1="#90c83c"
+          color2="#ef4444"
+          height={300}
+        />
       {/if}
     </div>
 

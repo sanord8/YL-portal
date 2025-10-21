@@ -11,6 +11,9 @@ import authRouter from './routes/auth';
 import { fetchRequestHandler } from '@trpc/server/adapters/fetch';
 import { appRouter } from './trpc';
 import { createContext } from './trpc/context';
+import { initializeWebSocketServer } from './services/websocketService';
+import { createServer } from 'net';
+import { execSync } from 'child_process';
 
 const app = new Hono();
 
@@ -102,14 +105,231 @@ app.onError((err, c) => {
 });
 
 // ============================================
+// PORT MANAGEMENT UTILITIES
+// ============================================
+
+/**
+ * Check if a port is available
+ */
+async function isPortAvailable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = createServer();
+
+    server.once('error', (err: any) => {
+      if (err.code === 'EADDRINUSE') {
+        resolve(false);
+      } else {
+        resolve(false);
+      }
+    });
+
+    server.once('listening', () => {
+      server.close();
+      resolve(true);
+    });
+
+    server.listen(port);
+  });
+}
+
+/**
+ * Find and kill process using a port (Windows compatible)
+ */
+async function killProcessOnPort(port: number): Promise<boolean> {
+  try {
+    const isWindows = process.platform === 'win32';
+
+    if (isWindows) {
+      // Find PID using netstat
+      const netstatOutput = execSync(`netstat -ano | findstr :${port}`, {
+        encoding: 'utf-8',
+      });
+
+      // Extract PID from output (last column)
+      const lines = netstatOutput.trim().split('\n');
+      const pids = new Set<string>();
+
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        const pid = parts[parts.length - 1];
+        if (pid && pid !== '0') {
+          pids.add(pid);
+        }
+      }
+
+      // Kill each unique PID
+      for (const pid of pids) {
+        try {
+          execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
+          console.log(`✅ Killed process ${pid} on port ${port}`);
+        } catch {
+          // Process might have already exited
+        }
+      }
+
+      return pids.size > 0;
+    } else {
+      // Linux/Mac
+      execSync(`lsof -ti:${port} | xargs kill -9`, { stdio: 'ignore' });
+      console.log(`✅ Killed process on port ${port}`);
+      return true;
+    }
+  } catch (err) {
+    // No process found or unable to kill
+    return false;
+  }
+}
+
+// ============================================
 // SERVER STARTUP
 // ============================================
 
 const port = Number(process.env.PORT) || 3000;
+const isDevelopment = process.env.NODE_ENV !== 'production';
 
-console.log(`🚀 Server starting on http://localhost:${port}`);
+let server: any;
 
-serve({
-  fetch: app.fetch,
-  port,
+async function startServer() {
+  try {
+    console.log(`🚀 Server starting on http://localhost:${port}`);
+
+    // Check if port is available
+    const portAvailable = await isPortAvailable(port);
+
+    if (!portAvailable) {
+      console.warn(`⚠️  Port ${port} is already in use`);
+
+      if (isDevelopment) {
+        console.log('🔄 Attempting to kill process and retry...');
+        const killed = await killProcessOnPort(port);
+
+        if (killed) {
+          // Wait a bit for port to be released
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+
+          // Check again
+          const nowAvailable = await isPortAvailable(port);
+          if (!nowAvailable) {
+            throw new Error(
+              `Port ${port} is still in use after cleanup attempt. Please manually kill the process.`
+            );
+          }
+          console.log('✅ Port is now available');
+        } else {
+          throw new Error(
+            `Could not free port ${port}. Please run: pnpm kill-port ${port}`
+          );
+        }
+      } else {
+        throw new Error(
+          `Port ${port} is already in use. Please ensure no other instance is running.`
+        );
+      }
+    }
+
+    // Start the server
+    server = serve({
+      fetch: app.fetch,
+      port,
+    });
+
+    // Initialize WebSocket server
+    initializeWebSocketServer(server);
+
+    console.log('✅ WebSocket server initialized on /api/ws');
+    console.log(`✅ Server running on http://localhost:${port}`);
+  } catch (err: any) {
+    console.error('❌ Failed to start server:', err.message);
+
+    if (err.code === 'EADDRINUSE') {
+      console.error(`\n💡 Port ${port} is occupied. Try one of these solutions:`);
+      console.error(`   1. Run: pnpm dev:clean`);
+      console.error(`   2. Run: pnpm kill-port ${port}`);
+      console.error(`   3. Manually kill the process using port ${port}\n`);
+    }
+
+    process.exit(1);
+  }
+}
+
+// Start the server
+startServer();
+
+// ============================================
+// GRACEFUL SHUTDOWN
+// ============================================
+
+let isShuttingDown = false;
+
+async function gracefulShutdown(signal: string) {
+  if (isShuttingDown) {
+    console.log('⚠️  Shutdown already in progress...');
+    return;
+  }
+
+  isShuttingDown = true;
+  console.log(`\n🛑 ${signal} received. Starting graceful shutdown...`);
+
+  // Set a timeout to force exit if graceful shutdown takes too long
+  const forceExitTimeout = setTimeout(() => {
+    console.error('❌ Graceful shutdown timeout. Forcing exit.');
+    process.exit(1);
+  }, 10000); // 10 seconds timeout
+
+  try {
+    // Close HTTP server (stops accepting new connections)
+    await new Promise<void>((resolve, reject) => {
+      server.close((err) => {
+        if (err) {
+          console.error('❌ Error closing HTTP server:', err);
+          reject(err);
+        } else {
+          console.log('✅ HTTP server closed');
+          resolve();
+        }
+      });
+    });
+
+    // Close Redis connection if it exists
+    try {
+      const { closeRedis } = await import('./middleware/rateLimit');
+      await closeRedis();
+      console.log('✅ Redis connection closed');
+    } catch (err) {
+      console.error('⚠️  Error closing Redis:', err);
+    }
+
+    // Close WebSocket connections
+    try {
+      const { closeWebSocketServer } = await import('./services/websocketService');
+      await closeWebSocketServer();
+      console.log('✅ WebSocket server closed');
+    } catch (err) {
+      console.error('⚠️  Error closing WebSocket server:', err);
+    }
+
+    clearTimeout(forceExitTimeout);
+    console.log('✅ Graceful shutdown complete');
+    process.exit(0);
+  } catch (err) {
+    clearTimeout(forceExitTimeout);
+    console.error('❌ Error during graceful shutdown:', err);
+    process.exit(1);
+  }
+}
+
+// Handle termination signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught Exception:', err);
+  gracefulShutdown('UNCAUGHT_EXCEPTION');
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  gracefulShutdown('UNHANDLED_REJECTION');
 });

@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { getCookie } from 'hono/cookie';
 import { z } from 'zod';
 import crypto from 'crypto';
 import { prisma } from '../db/prisma';
@@ -50,106 +51,122 @@ const resetPasswordSchema = z.object({
 
 /**
  * POST /api/auth/register
- * Register a new user
+ * DISABLED: Public registration is not allowed
+ * Users must be created by an administrator
  */
 auth.post('/register', async (c) => {
-  try {
-    // Parse and validate request body
-    const body = await c.req.json();
-    const validation = registerSchema.safeParse(body);
-
-    if (!validation.success) {
-      return c.json(
-        {
-          error: 'Validation failed',
-          message: validation.error.errors[0].message,
-          details: validation.error.errors,
-        },
-        400
-      );
-    }
-
-    const { name, email, password } = validation.data;
-
-    // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-    });
-
-    if (existingUser) {
-      return c.json(
-        {
-          error: 'Registration failed',
-          message: 'An account with this email already exists',
-        },
-        409
-      );
-    }
-
-    // Hash password
-    const passwordHash = await hashPassword(password);
-
-    // Generate email verification token
-    const verifyToken = crypto.randomBytes(32).toString('hex');
-    const verifyExpires = new Date();
-    verifyExpires.setHours(verifyExpires.getHours() + 24); // 24 hour expiry
-
-    // Create user
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email: email.toLowerCase(),
-        passwordHash,
-        emailVerifyToken: verifyToken,
-        emailVerifyExpires: verifyExpires,
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        emailVerified: true,
-        createdAt: true,
-      },
-    });
-
-    // Send verification email (don't fail registration if email fails)
-    try {
-      await sendVerificationEmail(user.email, user.name, verifyToken);
-    } catch (emailError) {
-      console.error('Failed to send verification email:', emailError);
-      // Continue with registration - user can request resend later
-    }
-
-    // Create session (auto-login)
-    const { sessionId, expiresAt } = await createSession(user.id, false);
-
-    // Set session cookie
-    const cookieConfig = getSessionCookieConfig(expiresAt);
-    c.header(
-      'Set-Cookie',
-      `${SESSION_COOKIE_NAME}=${sessionId}; HttpOnly; Path=${cookieConfig.path}; SameSite=${cookieConfig.sameSite}; Expires=${cookieConfig.expires.toUTCString()}${cookieConfig.secure ? '; Secure' : ''}`
-    );
-
-    return c.json({
-      success: true,
-      message: 'Account created successfully',
-      user,
-      session: {
-        expiresAt: expiresAt.toISOString(),
-        rememberMe: false,
-      }
-    }, 201);
-  } catch (error) {
-    console.error('Registration error:', error);
-    return c.json(
-      {
-        error: 'Internal server error',
-        message: 'An error occurred during registration',
-      },
-      500
-    );
-  }
+  return c.json(
+    {
+      error: 'Registration disabled',
+      message: 'Public registration is not allowed. Please contact your administrator to create an account.',
+    },
+    403
+  );
 });
+
+// LEGACY CODE - Kept for reference if needed in the future
+// /**
+//  * POST /api/auth/register
+//  * Register a new user
+//  */
+// auth.post('/register', async (c) => {
+//   try {
+//     // Parse and validate request body
+//     const body = await c.req.json();
+//     const validation = registerSchema.safeParse(body);
+//
+//     if (!validation.success) {
+//       return c.json(
+//         {
+//           error: 'Validation failed',
+//           message: validation.error.errors[0].message,
+//           details: validation.error.errors,
+//         },
+//         400
+//       );
+//     }
+//
+//     const { name, email, password } = validation.data;
+//
+//     // Check if user already exists
+//     const existingUser = await prisma.user.findUnique({
+//       where: { email: email.toLowerCase() },
+//     });
+//
+//     if (existingUser) {
+//       return c.json(
+//         {
+//           error: 'Registration failed',
+//           message: 'An account with this email already exists',
+//         },
+//         409
+//       );
+//     }
+//
+//     // Hash password
+//     const passwordHash = await hashPassword(password);
+//
+//     // Generate email verification token
+//     const verifyToken = crypto.randomBytes(32).toString('hex');
+//     const verifyExpires = new Date();
+//     verifyExpires.setHours(verifyExpires.getHours() + 24); // 24 hour expiry
+//
+//     // Create user
+//     const user = await prisma.user.create({
+//       data: {
+//         name,
+//         email: email.toLowerCase(),
+//         passwordHash,
+//         emailVerifyToken: verifyToken,
+//         emailVerifyExpires: verifyExpires,
+//       },
+//       select: {
+//         id: true,
+//         name: true,
+//         email: true,
+//         emailVerified: true,
+//         createdAt: true,
+//       },
+//     });
+//
+//     // Send verification email (don't fail registration if email fails)
+//     try {
+//       await sendVerificationEmail(user.email, user.name, verifyToken);
+//     } catch (emailError) {
+//       console.error('Failed to send verification email:', emailError);
+//       // Continue with registration - user can request resend later
+//     }
+//
+//     // Create session (auto-login)
+//     const { sessionId, expiresAt } = await createSession(user.id, false);
+//
+//     // Set session cookie
+//     const cookieConfig = getSessionCookieConfig(expiresAt);
+//     c.header(
+//       'Set-Cookie',
+//       `${SESSION_COOKIE_NAME}=${sessionId}; HttpOnly; Path=${cookieConfig.path}; SameSite=${cookieConfig.sameSite}; Expires=${cookieConfig.expires.toUTCString()}${cookieConfig.secure ? '; Secure' : ''}`
+//     );
+//
+//     return c.json({
+//       success: true,
+//       message: 'Account created successfully',
+//       user,
+//       session: {
+//         expiresAt: expiresAt.toISOString(),
+//         rememberMe: false,
+//       }
+//     }, 201);
+//   } catch (error) {
+//     console.error('Registration error:', error);
+//     return c.json(
+//       {
+//         error: 'Internal server error',
+//         message: 'An error occurred during registration',
+//       },
+//       500
+//     );
+//   }
+// });
 
 /**
  * POST /api/auth/login
@@ -230,6 +247,7 @@ auth.post('/login', async (c) => {
         name: user.name,
         email: user.email,
         emailVerified: user.emailVerified,
+        isAdmin: user.isAdmin,
         createdAt: user.createdAt,
       },
       session: {
@@ -256,7 +274,7 @@ auth.post('/login', async (c) => {
 auth.post('/logout', async (c) => {
   try {
     // Get session ID from cookie
-    const sessionId = c.req.cookie(SESSION_COOKIE_NAME);
+    const sessionId = getCookie(c, SESSION_COOKIE_NAME);
 
     if (sessionId) {
       // Delete session from database
@@ -301,6 +319,7 @@ auth.get('/me', authMiddleware, async (c) => {
         email: user.email,
         emailVerified: user.emailVerified,
         twoFactorEnabled: user.twoFactorEnabled,
+        isAdmin: user.isAdmin,
         createdAt: user.createdAt,
       },
     });

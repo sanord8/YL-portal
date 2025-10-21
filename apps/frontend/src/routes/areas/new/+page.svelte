@@ -112,24 +112,24 @@
   <title>New Area - YoungLife Portal</title>
 </svelte:head>
 
-<div class="max-w-3xl mx-auto space-y-6">
+<div class="max-w-3xl mx-auto px-4 sm:px-0 space-y-6">
   <!-- Header -->
   <div>
     <button
       on:click={handleCancel}
-      class="flex items-center text-sm text-yl-gray-600 hover:text-yl-black mb-4 transition-colors"
+      class="flex items-center text-sm text-yl-gray-600 hover:text-yl-black mb-4 transition-colors touch-manipulation"
     >
       <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
       </svg>
       Back to Areas
     </button>
-    <h1 class="text-3xl font-bold text-yl-black">Create New Area</h1>
+    <h1 class="text-2xl sm:text-3xl font-bold text-yl-black">Create New Area</h1>
     <p class="text-sm text-yl-gray-600 mt-1">Add a new financial area to the system</p>
   </div>
 
   <!-- Form -->
-  <form on:submit={handleSubmit} class="bg-white rounded-lg shadow border border-gray-200 p-6 space-y-6">
+  <form on:submit={handleSubmit} class="bg-white rounded-lg shadow border border-gray-200 p-4 sm:p-6 space-y-4 sm:space-y-6">
     <!-- Error Alert -->
     {#if error}
       <div class="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -245,13 +245,14 @@
     </div>
 
     <!-- Form Actions -->
-    <div class="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4 border-t">
+    <div class="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
       <Button
         type="button"
         variant="secondary"
         size="md"
         on:click={handleCancel}
         disabled={isSubmitting}
+        class="order-2 sm:order-1 w-full sm:w-auto"
       >
         Cancel
       </Button>
@@ -260,6 +261,7 @@
         variant="primary"
         size="md"
         disabled={isSubmitting}
+        class="order-1 sm:order-2 w-full sm:w-auto"
       >
         {#if isSubmitting}
           <svg class="animate-spin h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24">

@@ -3,6 +3,7 @@
 
 generator client {
   provider        = "prisma-client-js"
+  binaryTargets   = ["native", "windows"]
   previewFeatures = ["multiSchema", "postgresqlExtensions"]
 }
 
@@ -35,15 +36,21 @@ model User {
   twoFactorEnabled Boolean @default(false) @map("two_factor_enabled")
   twoFactorSecret String? @map("two_factor_secret")
 
+  // Admin flag
+  isAdmin      Boolean   @default(false) @map("is_admin")
+
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at") // Soft delete
 
   // Relations
-  sessions     Session[]
-  userAreas    UserArea[]
-  movements    Movement[]
-  auditLogs    AuditLog[]
+  sessions          Session[]
+  userAreas         UserArea[]
+  movements         Movement[]          @relation("MovementCreator")
+  approvedMovements Movement[]          @relation("MovementApprover")
+  rejectedMovements Movement[]          @relation("MovementRejector")
+  movementApprovals MovementApproval[]
+  auditLogs         AuditLog[]
 
   @@map("users")
   @@index([email])
@@ -164,11 +171,22 @@ model RolePermission {
   @@index([permissionId])
 }
 
+enum AreaRole {
+  VIEWER  // Can view movements in area
+  MANAGER // Can approve/reject movements
+  ADMIN   // Full control over area
+
+  @@map("area_role")
+}
+
 model UserArea {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String   @map("user_id") @db.Uuid
   areaId    String   @map("area_id") @db.Uuid
   roleId    String   @map("role_id") @db.Uuid
+
+  // Simple role for quick permission checks (approval workflow)
+  areaRole  AreaRole @default(MANAGER) @map("area_role")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -219,6 +237,13 @@ model Movement {
   category        String?
   reference       String?        // External reference number
 
+  // Approval tracking
+  approvedBy      String?        @map("approved_by") @db.Uuid
+  approvedAt      DateTime?      @map("approved_at")
+  rejectedBy      String?        @map("rejected_by") @db.Uuid
+  rejectedAt      DateTime?      @map("rejected_at")
+  rejectionReason String?        @map("rejection_reason")
+
   // Distribution tracking
   distributionId  String?        @map("distribution_id") @db.Uuid
   parentId        String?        @map("parent_id") @db.Uuid // For distributed movements
@@ -233,12 +258,15 @@ model Movement {
   idempotencyKey  String?        @unique @map("idempotency_key")
 
   // Relations
-  area         Area        @relation(fields: [areaId], references: [id])
-  department   Department? @relation(fields: [departmentId], references: [id])
-  user         User        @relation(fields: [userId], references: [id])
-  parent       Movement?   @relation("MovementDistribution", fields: [parentId], references: [id])
-  children     Movement[]  @relation("MovementDistribution")
-  attachments  Attachment[]
+  area            Area               @relation(fields: [areaId], references: [id])
+  department      Department?        @relation(fields: [departmentId], references: [id])
+  user            User               @relation("MovementCreator", fields: [userId], references: [id])
+  approver        User?              @relation("MovementApprover", fields: [approvedBy], references: [id])
+  rejector        User?              @relation("MovementRejector", fields: [rejectedBy], references: [id])
+  parent          Movement?          @relation("MovementDistribution", fields: [parentId], references: [id])
+  children        Movement[]         @relation("MovementDistribution")
+  attachments     Attachment[]
+  approvalHistory MovementApproval[]
 
   @@map("movements")
   @@index([transactionDate])  // Standalone index for date-range queries
@@ -265,6 +293,33 @@ model Attachment {
 
   @@map("attachments")
   @@index([movementId])
+}
+
+enum ApprovalAction {
+  APPROVED
+  REJECTED
+  COMMENT
+  EDITED
+
+  @@map("approval_action")
+}
+
+model MovementApproval {
+  id         String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  movementId String         @map("movement_id") @db.Uuid
+  userId     String         @map("user_id") @db.Uuid
+  action     ApprovalAction
+  comment    String?
+
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  movement Movement @relation(fields: [movementId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@map("movement_approvals")
+  @@index([movementId])
+  @@index([userId])
+  @@index([createdAt])
 }
 
 // ============================================
