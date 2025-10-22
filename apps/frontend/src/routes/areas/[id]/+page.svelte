@@ -6,8 +6,8 @@
   import StatsGrid from '$lib/components/StatsGrid.svelte';
   import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
   import SearchDropdown from '$lib/components/SearchDropdown.svelte';
+  import { toastStore } from '$lib/stores/toastStore';
 
-  let areaId = $page.params.id;
   let area: any = null;
   let departments: any[] = [];
   let movements: any[] = [];
@@ -29,10 +29,18 @@
   let userToRemove: { id: string; name: string | null } | null = null;
   let showRemoveUserDialog = false;
 
+  // Reactive area ID from route params
+  $: areaId = $page.params.id;
+
+  // Reload data when area ID changes
+  $: if (areaId) {
+    loadArea();
+    loadDepartments();
+    loadRecentMovements();
+  }
+
   onMount(async () => {
-    await loadArea();
-    await loadDepartments();
-    await loadRecentMovements();
+    // Initial load handled by reactive statement
   });
 
   async function loadArea() {
@@ -65,7 +73,7 @@
         areaId,
         limit: 5
       });
-      movements = result.items;
+      movements = result.movements;
     } catch (err: any) {
       console.error('Failed to load movements:', err);
     } finally {
@@ -99,7 +107,7 @@
       await loadArea(); // Reload to get updated user list
       await loadUnassignedUsers(); // Refresh available users
     } catch (err: any) {
-      alert(`Failed to assign user: ${err.message}`);
+      toastStore.add(`Failed to assign user: ${err.message}`, 'error');
     } finally {
       isAssigningUser = false;
     }
@@ -123,7 +131,7 @@
       showRemoveUserDialog = false;
       userToRemove = null;
     } catch (err: any) {
-      alert(`Failed to remove user: ${err.message}`);
+      toastStore.add(`Failed to remove user: ${err.message}`, 'error');
     }
   }
 
@@ -133,7 +141,7 @@
       await trpc.area.delete.mutate({ id: areaId });
       goto('/areas');
     } catch (err: any) {
-      alert(`Failed to delete area: ${err.message}`);
+      toastStore.add(`Failed to delete area: ${err.message}`, 'error');
       isDeleting = false;
       showDeleteDialog = false;
     }

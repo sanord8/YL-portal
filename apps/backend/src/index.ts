@@ -6,7 +6,7 @@ import { getCookie } from 'hono/cookie';
 import { timeout } from 'hono/timeout';
 import { csrf } from 'hono/csrf';
 import { corsMiddleware } from './middleware/cors';
-import { rateLimiter } from './middleware/rateLimit';
+import { rateLimiter, redis } from './middleware/rateLimit';
 import authRouter from './routes/auth';
 import { fetchRequestHandler } from '@trpc/server/adapters/fetch';
 import { appRouter } from './trpc';
@@ -14,6 +14,7 @@ import { createContext } from './trpc/context';
 import { initializeWebSocketServer } from './services/websocketService';
 import { createServer } from 'net';
 import { execSync } from 'child_process';
+import { prisma } from './db/prisma';
 
 const app = new Hono();
 
@@ -57,13 +58,97 @@ app.use('*', rateLimiter({ windowMs: 60 * 1000, maxRequests: 100 }));
 // ROUTES
 // ============================================
 
-// Health check
-app.get('/health', (c) => {
-  return c.json({
-    status: 'ok',
+// Track server start time for uptime calculation
+const serverStartTime = Date.now();
+
+// Health check with dependency monitoring
+app.get('/health', async (c) => {
+  const checks = await Promise.allSettled([
+    // Database health check
+    (async () => {
+      const start = Date.now();
+      try {
+        await prisma.$queryRaw`SELECT 1`;
+        return {
+          status: 'healthy' as const,
+          responseTime: Date.now() - start,
+        };
+      } catch (error) {
+        return {
+          status: 'unhealthy' as const,
+          responseTime: Date.now() - start,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    })(),
+
+    // Redis health check
+    (async () => {
+      const start = Date.now();
+      try {
+        // Check Redis connection status
+        if (redis.status === 'ready' || redis.status === 'connect') {
+          // Try a ping command
+          await redis.ping();
+          return {
+            status: 'healthy' as const,
+            responseTime: Date.now() - start,
+          };
+        } else if (redis.status === 'connecting' || redis.status === 'reconnecting') {
+          return {
+            status: 'degraded' as const,
+            responseTime: Date.now() - start,
+            message: 'Redis is reconnecting',
+          };
+        } else {
+          return {
+            status: 'unavailable' as const,
+            responseTime: Date.now() - start,
+            message: `Redis status: ${redis.status}`,
+          };
+        }
+      } catch (error) {
+        return {
+          status: 'unavailable' as const,
+          responseTime: Date.now() - start,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    })(),
+  ]);
+
+  // Extract results
+  const dbResult = checks[0].status === 'fulfilled' ? checks[0].value : { status: 'unhealthy' as const, responseTime: 0, error: 'Check failed' };
+  const redisResult = checks[1].status === 'fulfilled' ? checks[1].value : { status: 'unavailable' as const, responseTime: 0, error: 'Check failed' };
+
+  // Determine overall status
+  let overallStatus: 'healthy' | 'degraded' | 'unhealthy';
+  if (dbResult.status === 'unhealthy') {
+    overallStatus = 'unhealthy'; // Database is critical
+  } else if (redisResult.status !== 'healthy') {
+    overallStatus = 'degraded'; // Redis unavailable but not critical
+  } else {
+    overallStatus = 'healthy';
+  }
+
+  // Calculate uptime
+  const uptimeMs = Date.now() - serverStartTime;
+
+  const response = {
+    status: overallStatus,
     timestamp: new Date().toISOString(),
-    version: '1.0.0'
-  });
+    version: '1.0.0',
+    uptime: uptimeMs,
+    services: {
+      database: dbResult,
+      redis: redisResult,
+    },
+  };
+
+  // Return appropriate HTTP status code
+  const httpStatus = overallStatus === 'healthy' ? 200 : overallStatus === 'degraded' ? 200 : 503;
+
+  return c.json(response, httpStatus);
 });
 
 // API routes

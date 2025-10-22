@@ -17,9 +17,18 @@ interface AuthState {
   isAuthenticated: boolean;
 }
 
+// Check for session cookie on initialization for faster state detection
+function hasSessionCookie(): boolean {
+  if (!browser) return false;
+  const cookies = document.cookie.split(';');
+  return cookies.some((c) => c.trim().startsWith('auth_session='));
+}
+
 const initialState: AuthState = {
   user: null,
-  isLoading: true,
+  // If session cookie exists, start with optimistic loading state
+  // This prevents flash of "not authenticated" state
+  isLoading: hasSessionCookie(),
   isAuthenticated: false,
 };
 
@@ -34,6 +43,16 @@ function createAuthStore() {
      */
     async checkAuth() {
       if (!browser) return;
+
+      // Quick check: if no session cookie, immediately set not authenticated
+      if (!hasSessionCookie()) {
+        set({
+          user: null,
+          isAuthenticated: false,
+          isLoading: false,
+        });
+        return;
+      }
 
       update((state) => ({ ...state, isLoading: true }));
 

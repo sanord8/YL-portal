@@ -16,37 +16,63 @@
   $: chartHeight = viewBoxHeight - padding.top - padding.bottom;
   $: chartWidth = viewBoxWidth - padding.left - padding.right;
 
-  $: maxValue = Math.max(...data.flatMap((d) => [d.value1, d.value2]), 0);
+  // Memoize expensive calculations
+  let previousDataStr = '';
+  let cachedMaxValue = 0;
+  let cachedPath1 = '';
+  let cachedPath2 = '';
+  let cachedYTicks: number[] = [0];
+
+  $: {
+    const dataStr = JSON.stringify(data);
+    if (dataStr !== previousDataStr) {
+      previousDataStr = dataStr;
+
+      // Recalculate all values
+      cachedMaxValue = Math.max(...data.flatMap((d) => [d.value1, d.value2]), 0);
+
+      // Generate paths
+      const values1 = data.map((d) => d.value1);
+      const values2 = data.map((d) => d.value2);
+
+      cachedPath1 = generatePath(values1, cachedMaxValue);
+      cachedPath2 = generatePath(values2, cachedMaxValue);
+
+      // Generate Y-axis ticks
+      cachedYTicks = cachedMaxValue > 0
+        ? [0, cachedMaxValue / 4, cachedMaxValue / 2, (3 * cachedMaxValue) / 4, cachedMaxValue]
+        : [0];
+    }
+  }
+
+  $: maxValue = cachedMaxValue;
+  $: path1 = cachedPath1;
+  $: path2 = cachedPath2;
+  $: yTicks = cachedYTicks;
 
   // Scale functions - now return pixel coordinates
-  $: yScale = (value: number) => {
-    if (maxValue === 0) return chartHeight;
-    return chartHeight - (value / maxValue) * chartHeight;
-  };
+  function yScale(value: number, max: number): number {
+    if (max === 0) return chartHeight;
+    return chartHeight - (value / max) * chartHeight;
+  }
 
-  $: xScale = (index: number) => {
+  function xScale(index: number): number {
     if (data.length <= 1) return chartWidth / 2;
     return (index / (data.length - 1)) * chartWidth;
-  };
+  }
 
   // Generate path for line
-  function generatePath(values: number[]): string {
+  function generatePath(values: number[], max: number): string {
     if (values.length === 0) return '';
 
-    let path = `M ${xScale(0)} ${yScale(values[0])}`;
+    let path = `M ${xScale(0)} ${yScale(values[0], max)}`;
 
     for (let i = 1; i < values.length; i++) {
-      path += ` L ${xScale(i)} ${yScale(values[i])}`;
+      path += ` L ${xScale(i)} ${yScale(values[i], max)}`;
     }
 
     return path;
   }
-
-  $: path1 = generatePath(data.map((d) => d.value1));
-  $: path2 = generatePath(data.map((d) => d.value2));
-
-  // Y-axis ticks
-  $: yTicks = maxValue > 0 ? [0, maxValue / 4, maxValue / 2, (3 * maxValue) / 4, maxValue] : [0];
 
   function formatCurrency(value: number): string {
     if (value >= 1000000) {
@@ -74,10 +100,16 @@
   }
 </script>
 
-<div class="relative" style="height: {height}px;">
-  {#if data.length === 0}
-    <div class="flex items-center justify-center h-full">
-      <p class="text-sm text-yl-gray-600">No data available</p>
+<div class="relative" style="min-height: {height + 50}px;">
+  {#if !data || data.length === 0}
+    <div class="flex items-center justify-center" style="height: {height}px;">
+      <div class="text-center">
+        <svg class="w-16 h-16 text-yl-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+        </svg>
+        <p class="text-sm text-yl-gray-600 font-medium">No data available</p>
+        <p class="text-xs text-yl-gray-500 mt-1">Data will appear here once recorded</p>
+      </div>
     </div>
   {:else}
     <svg
@@ -90,7 +122,7 @@
       <!-- Y-axis -->
       <g>
         {#each yTicks as tick}
-          <g transform="translate(0, {padding.top + yScale(tick)})">
+          <g transform="translate(0, {padding.top + yScale(tick, maxValue)})">
             <line
               x1={padding.left - 5}
               y1="0"
@@ -146,7 +178,7 @@
         {#each data as point, i}
           <circle
             cx={xScale(i)}
-            cy={yScale(point.value1)}
+            cy={yScale(point.value1, maxValue)}
             r="4"
             fill={color1}
             class="hover:r-6 transition-all cursor-pointer"
@@ -159,7 +191,7 @@
         {#each data as point, i}
           <circle
             cx={xScale(i)}
-            cy={yScale(point.value2)}
+            cy={yScale(point.value2, maxValue)}
             r="4"
             fill={color2}
             class="hover:r-6 transition-all cursor-pointer"
@@ -185,14 +217,14 @@
     </svg>
 
     <!-- Legend -->
-    <div class="flex justify-center items-center gap-6 mt-4">
+    <div class="flex flex-wrap justify-center items-center gap-4 sm:gap-6 mt-4 px-4">
       <div class="flex items-center gap-2">
-        <div class="w-4 h-4 rounded-full" style="background-color: {color1};"></div>
-        <span class="text-sm text-yl-gray-600">{label1}</span>
+        <div class="w-4 h-4 rounded-full flex-shrink-0" style="background-color: {color1};"></div>
+        <span class="text-sm text-yl-gray-700 font-medium">{label1}</span>
       </div>
       <div class="flex items-center gap-2">
-        <div class="w-4 h-4 rounded-full" style="background-color: {color2};"></div>
-        <span class="text-sm text-yl-gray-600">{label2}</span>
+        <div class="w-4 h-4 rounded-full flex-shrink-0" style="background-color: {color2};"></div>
+        <span class="text-sm text-yl-gray-700 font-medium">{label2}</span>
       </div>
     </div>
   {/if}

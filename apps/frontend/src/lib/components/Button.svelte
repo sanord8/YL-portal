@@ -8,7 +8,7 @@
   let className = '';
   export { className as class };
 
-  const baseClasses = 'inline-flex items-center justify-center font-semibold rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md';
+  const baseClasses = 'inline-flex items-center justify-center font-semibold rounded-lg transition-colors duration-100 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md active:scale-95 transform will-change-transform';
 
   const variantClasses = {
     // YoungLife green primary button

@@ -305,11 +305,25 @@ auth.post('/logout', async (c) => {
 
 /**
  * GET /api/auth/me
- * Get current authenticated user
+ * Get current authenticated user with session information
  */
 auth.get('/me', authMiddleware, async (c) => {
   try {
     const user = c.get('user');
+    const sessionId = c.get('sessionId');
+
+    // Fetch session details for expiry information
+    const session = await prisma.session.findUnique({
+      where: { id: sessionId },
+      select: {
+        expiresAt: true,
+        rememberMe: true,
+      },
+    });
+
+    // Calculate time until expiration
+    const now = new Date();
+    const expiresInMs = session ? session.expiresAt.getTime() - now.getTime() : 0;
 
     return c.json({
       success: true,
@@ -322,6 +336,11 @@ auth.get('/me', authMiddleware, async (c) => {
         isAdmin: user.isAdmin,
         createdAt: user.createdAt,
       },
+      session: session ? {
+        expiresAt: session.expiresAt.toISOString(),
+        expiresInMs: Math.max(0, expiresInMs),
+        rememberMe: session.rememberMe,
+      } : undefined,
     });
   } catch (error) {
     console.error('Get user error:', error);

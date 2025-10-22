@@ -280,14 +280,15 @@ model Movement {
 }
 
 model Attachment {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  movementId String   @map("movement_id") @db.Uuid
-  filename   String
-  mimeType   String   @map("mime_type")
-  size       Int      // Size in bytes
-  url        String   // S3 or storage URL
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  movementId    String   @map("movement_id") @db.Uuid
+  filename      String
+  mimeType      String   @map("mime_type")
+  size          Int      // Size in bytes
+  fileData      Bytes    @map("file_data") // Binary file data stored in database
+  thumbnailData Bytes?   @map("thumbnail_data") // Optional thumbnail for images
 
-  createdAt  DateTime @default(now()) @map("created_at")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   movement Movement @relation(fields: [movementId], references: [id], onDelete: Cascade)
 

@@ -1,11 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
+  import { browser } from '$app/environment';
   import { authStore } from '$lib/stores/authStore';
   import { trpc } from '$lib/trpc';
   import StatsCard from '$lib/components/StatsCard.svelte';
   import BalanceCard from '$lib/components/BalanceCard.svelte';
   import LineChart from '$lib/components/LineChart.svelte';
+  import PieChart from '$lib/components/PieChart.svelte';
 
   // Loading states
   let isLoadingStats = true;
@@ -13,6 +15,8 @@
   let isLoadingRecent = true;
   let isLoadingBreakdown = true;
   let isLoadingTrend = true;
+  let isLoadingAreaExpenses = true;
+  let isLoadingDeptExpenses = true;
 
   // Data
   let stats: any = null;
@@ -20,6 +24,8 @@
   let recentMovements: any[] = [];
   let expenseBreakdown: any = null;
   let trendData: any[] = [];
+  let areaExpenses: any = null;
+  let deptExpenses: any = null;
 
   // Errors
   let statsError = '';
@@ -27,23 +33,36 @@
   let recentError = '';
   let breakdownError = '';
   let trendError = '';
+  let areaExpensesError = '';
+  let deptExpensesError = '';
+
+  // Department expenses filter
+  let selectedAreaForDept = '';
 
   $: isAuthenticated = $authStore.isAuthenticated;
 
+  let refreshInterval: ReturnType<typeof setInterval> | null = null;
+
+  // Reactive statement to load data when authentication status changes to true
+  $: if (isAuthenticated && browser) {
+    loadAllData();
+  }
+
   onMount(async () => {
-    if (!isAuthenticated) {
-      return;
+    // Auto-refresh every 5 minutes if authenticated
+    if (isAuthenticated) {
+      refreshInterval = setInterval(() => {
+        if (isAuthenticated) {
+          loadAllData();
+        }
+      }, 5 * 60 * 1000);
     }
 
-    // Load all dashboard data in parallel
-    loadAllData();
-
-    // Auto-refresh every 5 minutes
-    const interval = setInterval(() => {
-      loadAllData();
-    }, 5 * 60 * 1000);
-
-    return () => clearInterval(interval);
+    return () => {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+    };
   });
 
   async function loadAllData() {
@@ -52,6 +71,8 @@
     loadRecentMovements();
     loadExpenseBreakdown();
     loadTrend();
+    loadAreaExpenses();
+    loadDeptExpenses();
   }
 
   async function loadStats() {
@@ -148,6 +169,40 @@
       default:
         return 'bg-gray-100 text-gray-800';
     }
+  }
+
+  async function loadAreaExpenses() {
+    try {
+      isLoadingAreaExpenses = true;
+      areaExpensesError = '';
+      areaExpenses = await trpc.dashboard.getExpensesByArea.query({ months: 6 });
+    } catch (err: any) {
+      console.error('Failed to load area expenses:', err);
+      areaExpensesError = err.message || 'Failed to load expenses by area';
+    } finally {
+      isLoadingAreaExpenses = false;
+    }
+  }
+
+  async function loadDeptExpenses() {
+    try {
+      isLoadingDeptExpenses = true;
+      deptExpensesError = '';
+      deptExpenses = await trpc.dashboard.getExpensesByDepartment.query({
+        months: 6,
+        areaId: selectedAreaForDept || undefined,
+      });
+    } catch (err: any) {
+      console.error('Failed to load department expenses:', err);
+      deptExpensesError = err.message || 'Failed to load expenses by department';
+    } finally {
+      isLoadingDeptExpenses = false;
+    }
+  }
+
+  // Reload department expenses when area filter changes
+  $: if (browser && isAuthenticated) {
+    loadDeptExpenses();
   }
 </script>
 
@@ -462,6 +517,109 @@
               <div class="flex justify-between text-sm font-semibold">
                 <span class="text-yl-black">Total Expenses</span>
                 <span class="text-red-600">{formatCurrency(expenseBreakdown.total)}</span>
+              </div>
+            </div>
+          </div>
+        {/if}
+      </div>
+    </div>
+
+    <!-- Area and Department Expense Charts -->
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      <!-- Expenses by Area -->
+      <div class="bg-white rounded-lg shadow border border-gray-200 p-6">
+        <h2 class="text-xl font-semibold text-yl-black mb-4">Expenses by Area (6 months)</h2>
+
+        {#if isLoadingAreaExpenses}
+          <div class="flex justify-center items-center py-12">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-yl-green"></div>
+          </div>
+        {:else if areaExpensesError}
+          <p class="text-sm text-red-600 text-center py-8">{areaExpensesError}</p>
+        {:else if !areaExpenses || areaExpenses.breakdown.length === 0}
+          <div class="text-center py-8">
+            <svg class="w-12 h-12 text-yl-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+            </svg>
+            <p class="text-sm text-yl-gray-600">No area expenses recorded</p>
+          </div>
+        {:else}
+          <PieChart
+            data={areaExpenses.breakdown.map((item) => ({
+              label: `${item.areaName} (${item.areaCode})`,
+              value: item.amount,
+              percentage: item.percentage,
+            }))}
+            height={300}
+          />
+        {/if}
+      </div>
+
+      <!-- Expenses by Department -->
+      <div class="bg-white rounded-lg shadow border border-gray-200 p-6">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <h2 class="text-xl font-semibold text-yl-black">Expenses by Department (6 months)</h2>
+          {#if balances.length > 1}
+            <select
+              bind:value={selectedAreaForDept}
+              on:change={loadDeptExpenses}
+              class="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yl-green focus:border-transparent"
+            >
+              <option value="">All Areas</option>
+              {#each balances as balance}
+                <option value={balance.area.id}>{balance.area.name}</option>
+              {/each}
+            </select>
+          {/if}
+        </div>
+
+        {#if isLoadingDeptExpenses}
+          <div class="flex justify-center items-center py-12">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-yl-green"></div>
+          </div>
+        {:else if deptExpensesError}
+          <p class="text-sm text-red-600 text-center py-8">{deptExpensesError}</p>
+        {:else if !deptExpenses || deptExpenses.breakdown.length === 0}
+          <div class="text-center py-8">
+            <svg class="w-12 h-12 text-yl-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+            <p class="text-sm text-yl-gray-600">
+              {selectedAreaForDept ? 'No department expenses for selected area' : 'No department expenses recorded'}
+            </p>
+          </div>
+        {:else}
+          <div class="space-y-4">
+            {#each deptExpenses.breakdown.slice(0, 10) as item}
+              <div>
+                <div class="flex justify-between text-sm mb-2">
+                  <span class="font-medium text-yl-black truncate">{item.departmentName}</span>
+                  <span class="text-yl-gray-600 whitespace-nowrap ml-2">{formatCurrency(item.amount)} ({item.percentage.toFixed(1)}%)</span>
+                </div>
+                <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    class="h-full bg-blue-500 transition-all"
+                    style="width: {item.percentage}%"
+                  ></div>
+                </div>
+                {#if !selectedAreaForDept}
+                  <p class="text-xs text-yl-gray-500 mt-1">
+                    {item.areaName} ({item.areaCode})
+                  </p>
+                {/if}
+              </div>
+            {/each}
+
+            {#if deptExpenses.breakdown.length > 10}
+              <p class="text-xs text-yl-gray-600 text-center mt-4">
+                + {deptExpenses.breakdown.length - 10} more departments
+              </p>
+            {/if}
+
+            <div class="pt-4 border-t border-gray-200">
+              <div class="flex justify-between text-sm font-semibold">
+                <span class="text-yl-black">Total Department Expenses</span>
+                <span class="text-blue-600">{formatCurrency(deptExpenses.total)}</span>
               </div>
             </div>
           </div>

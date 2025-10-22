@@ -3,10 +3,16 @@
   import { goto } from '$app/navigation';
   import { trpc } from '$lib/trpc';
   import Button from '$lib/components/Button.svelte';
+  import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+  import { toastStore } from '$lib/stores/toastStore';
 
   let areas: any[] = [];
   let isLoading = true;
   let error = '';
+
+  // Delete confirmation
+  let showDeleteDialog = false;
+  let areaToDelete: { id: string; name: string } | null = null;
 
   onMount(async () => {
     await loadAreas();
@@ -26,16 +32,21 @@
     }
   }
 
-  async function handleDelete(id: string, name: string) {
-    if (!confirm(`Are you sure you want to delete the area "${name}"?`)) {
-      return;
-    }
+  function handleDeleteClick(id: string, name: string) {
+    areaToDelete = { id, name };
+    showDeleteDialog = true;
+  }
+
+  async function confirmDelete() {
+    if (!areaToDelete) return;
 
     try {
-      await trpc.area.delete.mutate({ id });
+      await trpc.area.delete.mutate({ id: areaToDelete.id });
       await loadAreas();
+      showDeleteDialog = false;
+      areaToDelete = null;
     } catch (err: any) {
-      alert(err.message || 'Failed to delete area');
+      toastStore.add(err.message || 'Failed to delete area', 'error');
     }
   }
 
@@ -173,8 +184,8 @@
                   Edit
                 </button>
                 <button
-                  on:click={() => handleDelete(area.id, area.name)}
-                  class="text-red-600 hover:text-red-800 font-medium"
+                  on:click={() => handleDeleteClick(area.id, area.name)}
+                  class="text-red-600 hover:text-red-800 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={area._count.movements > 0}
                   title={area._count.movements > 0 ? 'Cannot delete area with movements' : ''}
                 >
@@ -232,7 +243,7 @@
               variant="secondary"
               size="sm"
               class="!text-red-600 !border-red-600 hover:!bg-red-50"
-              on:click={() => handleDelete(area.id, area.name)}
+              on:click={() => handleDeleteClick(area.id, area.name)}
               disabled={area._count.movements > 0}
             >
               Delete
@@ -243,3 +254,18 @@
     </div>
   {/if}
 </div>
+
+<!-- Delete Confirmation Dialog -->
+<ConfirmDialog
+  open={showDeleteDialog}
+  title="Delete Area"
+  message={areaToDelete ? `Are you sure you want to delete "${areaToDelete.name}"? This action cannot be undone.` : ''}
+  confirmText="Delete"
+  cancelText="Cancel"
+  variant="danger"
+  onConfirm={confirmDelete}
+  onCancel={() => {
+    showDeleteDialog = false;
+    areaToDelete = null;
+  }}
+/>

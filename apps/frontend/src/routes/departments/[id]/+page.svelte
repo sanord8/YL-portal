@@ -6,7 +6,6 @@
   import StatsGrid from '$lib/components/StatsGrid.svelte';
   import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 
-  let departmentId = $page.params.id;
   let department: any = null;
   let movements: any[] = [];
 
@@ -18,9 +17,17 @@
   let showDeleteDialog = false;
   let isDeleting = false;
 
+  // Reactive department ID from route params
+  $: departmentId = $page.params.id;
+
+  // Reload data when department ID changes
+  $: if (departmentId) {
+    loadDepartment();
+    loadRecentMovements();
+  }
+
   onMount(async () => {
-    await loadDepartment();
-    await loadRecentMovements();
+    // Initial load handled by reactive statement
   });
 
   async function loadDepartment() {
@@ -42,7 +49,7 @@
         departmentId,
         limit: 5
       });
-      movements = result.items;
+      movements = result.movements;
     } catch (err: any) {
       console.error('Failed to load movements:', err);
     } finally {

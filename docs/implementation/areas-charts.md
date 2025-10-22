@@ -121,7 +121,7 @@ export const appRouter = router({
   - Area name & description
   - Code badge
   - Currency
-  - Budget
+  - Current Budget
   - User count
   - Department count
   - Movement count
@@ -145,7 +145,7 @@ export const appRouter = router({
 - **Code** (required) - Short identifier (auto-uppercase)
 - **Description** (optional) - 500 char max
 - **Currency** (required) - Dropdown: EUR, USD, GBP, CAD, AUD
-- **Budget** (optional) - Annual budget in decimal format
+- **Budget** (optional) - Current budget in decimal format
 
 **Validation:**
 - Name: 1-100 characters

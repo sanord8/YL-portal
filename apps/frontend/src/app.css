@@ -73,4 +73,77 @@
   .dark h1, .dark h2, .dark h3, .dark h4, .dark h5, .dark h6 {
     @apply text-white;
   }
+
+  /* Mobile Performance Optimizations */
+  * {
+    /* Improve touch scrolling performance */
+    -webkit-overflow-scrolling: touch;
+    /* Disable tap highlight on mobile */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Optimize button and interactive elements for mobile */
+  button, a, [role="button"], input, textarea, select {
+    /* Remove 300ms delay on mobile tap */
+    touch-action: manipulation;
+    /* Prevent zoom on double-tap */
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Hardware acceleration for buttons */
+  button, a[role="button"], [role="button"] {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    perspective: 1000px;
+    -webkit-perspective: 1000px;
+  }
+
+  /* Instant visual feedback on touch */
+  @media (hover: none) {
+    button:active, a[role="button"]:active, [role="button"]:active {
+      opacity: 0.85;
+      transform: scale(0.97) translateZ(0);
+      transition: transform 0.05s ease-out, opacity 0.05s ease-out;
+    }
+  }
+
+  /* Allow text selection in input fields */
+  input, textarea {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* Allow text selection in content areas */
+  p, span, div {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* Remove hover effects on touch devices */
+  @media (hover: none) {
+    button:hover, a:hover, [role="button"]:hover {
+      /* Disable hover states on touch devices */
+      opacity: 1;
+    }
+  }
+
+  /* Optimize animations for mobile */
+  @media (prefers-reduced-motion: no-preference) {
+    * {
+      /* Use GPU acceleration for transforms and opacity */
+      will-change: auto;
+    }
+  }
+
+  /* Disable animations for users who prefer reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }

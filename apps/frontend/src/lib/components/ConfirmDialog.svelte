@@ -51,7 +51,7 @@
     <!-- Modal -->
     <div class="flex min-h-full items-center justify-center p-4">
       <div
-        class="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6 transform transition-all"
+        class="relative bg-white rounded-lg shadow-xl max-w-md w-full p-4 sm:p-6 transform transition-all max-h-[90vh] overflow-y-auto"
       >
         <!-- Icon -->
         <div class="flex items-center justify-center w-12 h-12 mx-auto mb-4 rounded-full {
@@ -94,10 +94,10 @@
         </div>
 
         <!-- Actions -->
-        <div class="flex gap-3">
+        <div class="flex flex-col sm:flex-row gap-3">
           <button
             type="button"
-            class="flex-1 px-4 py-2 text-sm font-medium text-yl-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yl-green transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            class="flex-1 order-2 sm:order-1 px-4 py-2.5 text-sm font-medium text-yl-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yl-green transition-colors disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
             on:click={onCancel}
             disabled={disabled || isLoading}
           >
@@ -105,7 +105,7 @@
           </button>
           <button
             type="button"
-            class="flex-1 px-4 py-2 text-sm font-medium text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed {variantClasses[variant]}"
+            class="flex-1 order-1 sm:order-2 px-4 py-2.5 text-sm font-medium text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation {variantClasses[variant]}"
             on:click={onConfirm}
             disabled={disabled || isLoading}
           >

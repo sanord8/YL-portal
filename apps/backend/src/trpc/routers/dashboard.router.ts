@@ -386,4 +386,222 @@ export const dashboardRouter = router({
 
       return result;
     }),
+
+  /**
+   * Get expenses grouped by area
+   * Returns array of areas with their expense totals and percentages
+   * Admins see expenses from ALL areas, regular users see only their assigned areas
+   */
+  getExpensesByArea: protectedProcedure
+    .input(
+      z.object({
+        months: z.number().min(1).max(12).default(6),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      let areaIds: string[];
+
+      if (ctx.user.isAdmin) {
+        // Admins see all areas
+        const allAreas = await ctx.prisma.area.findMany({
+          where: { deletedAt: null },
+          select: { id: true },
+        });
+        areaIds = allAreas.map((a) => a.id);
+      } else {
+        // Regular users see only their assigned areas
+        const userAreas = await ctx.prisma.userArea.findMany({
+          where: { userId: ctx.user.id },
+          select: { areaId: true },
+        });
+        areaIds = userAreas.map((ua) => ua.areaId);
+      }
+
+      // Calculate date range
+      const startDate = new Date();
+      startDate.setMonth(startDate.getMonth() - input.months);
+
+      // Get all expenses in date range, grouped by area
+      const expenses = await ctx.prisma.movement.findMany({
+        where: {
+          areaId: { in: areaIds },
+          type: 'EXPENSE',
+          status: 'APPROVED',
+          deletedAt: null,
+          transactionDate: {
+            gte: startDate,
+          },
+        },
+        select: {
+          areaId: true,
+          amount: true,
+          area: {
+            select: {
+              name: true,
+              code: true,
+            },
+          },
+        },
+      });
+
+      // Group by area
+      const areaMap = new Map<string, { name: string; code: string; amount: number }>();
+      let totalExpenses = 0;
+
+      expenses.forEach((expense) => {
+        const existing = areaMap.get(expense.areaId);
+        if (existing) {
+          existing.amount += expense.amount;
+        } else {
+          areaMap.set(expense.areaId, {
+            name: expense.area.name,
+            code: expense.area.code,
+            amount: expense.amount,
+          });
+        }
+        totalExpenses += expense.amount;
+      });
+
+      // Convert to array with percentages
+      const breakdown = Array.from(areaMap.entries()).map(([areaId, data]) => ({
+        areaId,
+        areaName: data.name,
+        areaCode: data.code,
+        amount: data.amount,
+        percentage: totalExpenses > 0 ? (data.amount / totalExpenses) * 100 : 0,
+      }));
+
+      // Sort by amount descending
+      breakdown.sort((a, b) => b.amount - a.amount);
+
+      return {
+        breakdown,
+        total: totalExpenses,
+      };
+    }),
+
+  /**
+   * Get expenses grouped by department
+   * Returns array of departments with their expense totals and percentages
+   * Optionally filter by areaId
+   * Admins see expenses from ALL areas, regular users see only their assigned areas
+   */
+  getExpensesByDepartment: protectedProcedure
+    .input(
+      z.object({
+        months: z.number().min(1).max(12).default(6),
+        areaId: z.string().uuid().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      let areaIds: string[];
+
+      if (ctx.user.isAdmin) {
+        // Admins see all areas
+        if (input.areaId) {
+          areaIds = [input.areaId];
+        } else {
+          const allAreas = await ctx.prisma.area.findMany({
+            where: { deletedAt: null },
+            select: { id: true },
+          });
+          areaIds = allAreas.map((a) => a.id);
+        }
+      } else {
+        // Regular users see only their assigned areas
+        const userAreas = await ctx.prisma.userArea.findMany({
+          where: { userId: ctx.user.id },
+          select: { areaId: true },
+        });
+        const userAreaIds = userAreas.map((ua) => ua.areaId);
+
+        if (input.areaId) {
+          // Check if user has access to requested area
+          if (!userAreaIds.includes(input.areaId)) {
+            return { breakdown: [], total: 0 };
+          }
+          areaIds = [input.areaId];
+        } else {
+          areaIds = userAreaIds;
+        }
+      }
+
+      // Calculate date range
+      const startDate = new Date();
+      startDate.setMonth(startDate.getMonth() - input.months);
+
+      // Get all expenses in date range, grouped by department
+      const expenses = await ctx.prisma.movement.findMany({
+        where: {
+          areaId: { in: areaIds },
+          type: 'EXPENSE',
+          status: 'APPROVED',
+          deletedAt: null,
+          departmentId: { not: null },
+          transactionDate: {
+            gte: startDate,
+          },
+        },
+        select: {
+          departmentId: true,
+          amount: true,
+          department: {
+            select: {
+              name: true,
+              code: true,
+            },
+          },
+          area: {
+            select: {
+              name: true,
+              code: true,
+            },
+          },
+        },
+      });
+
+      // Group by department
+      const departmentMap = new Map<
+        string,
+        { name: string; code: string; areaName: string; areaCode: string; amount: number }
+      >();
+      let totalExpenses = 0;
+
+      expenses.forEach((expense) => {
+        if (!expense.departmentId) return;
+
+        const existing = departmentMap.get(expense.departmentId);
+        if (existing) {
+          existing.amount += expense.amount;
+        } else {
+          departmentMap.set(expense.departmentId, {
+            name: expense.department!.name,
+            code: expense.department!.code,
+            areaName: expense.area.name,
+            areaCode: expense.area.code,
+            amount: expense.amount,
+          });
+        }
+        totalExpenses += expense.amount;
+      });
+
+      // Convert to array with percentages
+      const breakdown = Array.from(departmentMap.entries()).map(([departmentId, data]) => ({
+        departmentId,
+        departmentName: data.name,
+        departmentCode: data.code,
+        areaName: data.areaName,
+        areaCode: data.areaCode,
+        amount: data.amount,
+        percentage: totalExpenses > 0 ? (data.amount / totalExpenses) * 100 : 0,
+      }));
+
+      // Sort by amount descending
+      breakdown.sort((a, b) => b.amount - a.amount);
+
+      return {
+        breakdown,
+        total: totalExpenses,
+      };
+    }),
 });

@@ -5,6 +5,8 @@ import { areaRouter } from './routers/area.router';
 import { departmentRouter } from './routers/department.router';
 import { userRouter } from './routers/user.router';
 import { adminRouter } from './routers/admin.router';
+import { importRouter } from './routers/import.router';
+import { attachmentRouter } from './routers/attachment.router';
 
 /**
  * Main tRPC App Router
@@ -17,6 +19,8 @@ export const appRouter = router({
   department: departmentRouter,
   user: userRouter,
   admin: adminRouter,
+  import: importRouter,
+  attachment: attachmentRouter,
   // Future routers:
   // report: reportRouter,
 });

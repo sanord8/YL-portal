@@ -4,8 +4,8 @@
   import { onMount } from 'svelte';
   import { trpc } from '$lib/trpc';
   import FormInput from '$lib/components/FormInput.svelte';
-
-  let areaId = $page.params.id;
+  import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+  import { toastStore } from '$lib/stores/toastStore';
 
   // Form fields
   let name = '';
@@ -21,8 +21,20 @@
   let originalCurrency = '';
   let hasMovements = false;
 
+  // Currency change confirmation
+  let showCurrencyWarning = false;
+  let pendingSubmit = false;
+
+  // Reactive area ID from route params
+  $: areaId = $page.params.id;
+
+  // Reload data when area ID changes
+  $: if (areaId) {
+    loadArea();
+  }
+
   onMount(async () => {
-    await loadArea();
+    // Initial load handled by reactive statement
   });
 
   async function loadArea() {
@@ -57,25 +69,19 @@
   async function handleSubmit(event: Event) {
     event.preventDefault();
 
-    // Validate
-    if (!name.trim()) {
-      alert('Please enter an area name');
-      return;
-    }
-
-    if (!code.trim()) {
-      alert('Please enter an area code');
-      return;
-    }
+    // Validation is handled by HTML5 required attributes and inline validation
+    // No need for alerts
 
     // Warn about currency change if there are movements
-    if (hasMovements && currency !== originalCurrency) {
-      const confirmed = confirm(
-        `Warning: This area has ${hasMovements} movement(s). Changing the currency from ${originalCurrency} to ${currency} may affect financial reports. Are you sure you want to continue?`
-      );
-      if (!confirmed) return;
+    if (hasMovements && currency !== originalCurrency && !pendingSubmit) {
+      showCurrencyWarning = true;
+      return;
     }
 
+    await saveArea();
+  }
+
+  async function saveArea() {
     try {
       isSaving = true;
 
@@ -93,10 +99,18 @@
       // Navigate to detail page
       goto(`/areas/${areaId}`);
     } catch (err: any) {
-      alert(`Failed to update area: ${err.message}`);
+      toastStore.add(`Failed to update area: ${err.message}`, 'error');
     } finally {
       isSaving = false;
+      pendingSubmit = false;
+      showCurrencyWarning = false;
     }
+  }
+
+  function confirmCurrencyChange() {
+    pendingSubmit = true;
+    showCurrencyWarning = false;
+    saveArea();
   }
 
   function handleCancel() {
@@ -230,7 +244,7 @@
       <!-- Budget -->
       <div>
         <label for="budget" class="block text-sm font-medium text-yl-gray-700 mb-1">
-          Annual Budget (Optional)
+          Current Budget (Optional)
         </label>
         <div class="relative">
           <span class="absolute left-3 top-2 text-yl-gray-500">
@@ -272,3 +286,34 @@
     </form>
   {/if}
 </div>
+
+<!-- Currency Change Warning Dialog -->
+<ConfirmDialog
+  open={showCurrencyWarning}
+  title="Change Currency?"
+  confirmText="Yes, Change Currency"
+  cancelText="Cancel"
+  variant="warning"
+  onConfirm={confirmCurrencyChange}
+  onCancel={() => {
+    showCurrencyWarning = false;
+    pendingSubmit = false;
+  }}
+>
+  <div class="text-sm text-yl-gray-600 space-y-3">
+    <p class="font-medium text-yl-black">
+      Warning: This area has existing movements
+    </p>
+    <p>
+      Changing the currency from <strong class="text-yl-black">{originalCurrency}</strong> to <strong class="text-yl-black">{currency}</strong> may affect:
+    </p>
+    <ul class="list-disc list-inside space-y-1 text-left ml-4">
+      <li>Financial reports and summaries</li>
+      <li>Historical transaction records</li>
+      <li>Budget calculations and comparisons</li>
+    </ul>
+    <p class="text-yellow-700 font-medium">
+      Are you sure you want to continue?
+    </p>
+  </div>
+</ConfirmDialog>

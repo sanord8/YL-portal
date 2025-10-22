@@ -5,7 +5,9 @@
   import Button from '$lib/components/Button.svelte';
   import UserRoleBadge from '$lib/components/UserRoleBadge.svelte';
   import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+  import InfoDialog from '$lib/components/InfoDialog.svelte';
   import ResetPasswordModal from '$lib/components/ResetPasswordModal.svelte';
+  import { toastStore } from '$lib/stores/toastStore';
 
   // Pagination & Filters
   let page = 1;
@@ -24,6 +26,7 @@
   let deleteDialogOpen = false;
   let restoreDialogOpen = false;
   let resetPasswordModalOpen = false;
+  let passwordResetSuccessOpen = false;
   let selectedUser: any = null;
 
   // Actions
@@ -109,7 +112,7 @@
       await loadUsers();
     } catch (err: any) {
       console.error('Failed to delete user:', err);
-      alert(err?.message || 'Failed to delete user');
+      toastStore.add(err?.message || 'Failed to delete user', 'error');
     } finally {
       isDeleting = false;
     }
@@ -126,7 +129,7 @@
       await loadUsers();
     } catch (err: any) {
       console.error('Failed to restore user:', err);
-      alert(err?.message || 'Failed to restore user');
+      toastStore.add(err?.message || 'Failed to restore user', 'error');
     } finally {
       isRestoring = false;
     }
@@ -142,11 +145,11 @@
         newPassword: event.detail.password,
       });
       resetPasswordModalOpen = false;
+      passwordResetSuccessOpen = true;
       selectedUser = null;
-      alert('Password reset successfully. The user has been logged out from all devices.');
     } catch (err: any) {
       console.error('Failed to reset password:', err);
-      alert(err?.message || 'Failed to reset password');
+      toastStore.add(err?.message || 'Failed to reset password', 'error');
     } finally {
       isResettingPassword = false;
     }
@@ -477,4 +480,14 @@
   isLoading={isResettingPassword}
   on:confirm={handleResetPassword}
   on:cancel={() => { resetPasswordModalOpen = false; selectedUser = null; }}
+/>
+
+<!-- Password Reset Success Dialog -->
+<InfoDialog
+  open={passwordResetSuccessOpen}
+  title="Password Reset Successful"
+  message="The password has been reset successfully. The user has been logged out from all devices and can now log in with their new password."
+  variant="success"
+  okText="OK"
+  onOk={() => { passwordResetSuccessOpen = false; }}
 />

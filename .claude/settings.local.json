@@ -46,7 +46,13 @@
       "Bash(cmd.exe /c \"cd C:\\Users\\santi\\Downloads\\YL-portal && pnpm install\")",
       "Bash(cmd.exe /c \"cd C:\\Users\\santi\\Downloads\\YL-portal && pnpm dev\")",
       "Bash(cmd.exe /c \"cd C:\\Users\\santi\\Downloads\\YL-portal && pnpm prisma generate\")",
-      "Bash(cmd.exe /c \"cd C:\\Users\\santi\\Downloads\\YL-portal\\apps\\backend && pnpm prisma generate\")"
+      "Bash(cmd.exe /c \"cd C:\\Users\\santi\\Downloads\\YL-portal\\apps\\backend && pnpm prisma generate\")",
+      "Bash(cmd.exe /c \"cd C:\\Users\\santi\\Downloads\\YL-portal && pnpm add xlsx date-fns --filter backend\")",
+      "Bash(cmd.exe /c \"cd C:\\Users\\santi\\Downloads\\YL-portal && pnpm --filter backend prisma migrate dev --name add_file_data_to_attachments\")",
+      "Bash(cmd.exe /c \"cd C:\\Users\\santi\\Downloads\\YL-portal\\apps\\backend && pnpm db:migrate --name add_file_data_to_attachments\")",
+      "Bash(cmd.exe /c \"cd C:\\Users\\santi\\Downloads\\YL-portal\\apps\\backend && pnpm db:push\")",
+      "Bash(cmd.exe /c \"cd C:\\Users\\santi\\Downloads\\YL-portal\\apps\\backend && pnpm db:generate\")",
+      "Bash(cmd.exe /c \"cd C:\\Users\\santi\\Downloads\\YL-portal\\apps\\backend && npx prisma migrate deploy\")"
     ],
     "deny": [],
     "ask": []

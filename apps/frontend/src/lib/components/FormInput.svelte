@@ -9,6 +9,8 @@
   export let id: string = '';
   export let name: string = '';
   export let autocomplete: string = '';
+  export let maxlength: number | undefined = undefined;
+  export let helpText: string = '';
 
   // Generate ID if not provided
   $: inputId = id || `input-${label.toLowerCase().replace(/\s+/g, '-')}`;
@@ -43,6 +45,7 @@
     {required}
     {disabled}
     {autocomplete}
+    {maxlength}
     value={value}
     on:input={handleInput}
     class="w-full px-4 py-3 text-base border-2 rounded-lg transition-all duration-200
@@ -59,6 +62,11 @@
     on:focus
     on:change
   />
+
+  <!-- Help Text -->
+  {#if helpText}
+    <p class="mt-1 text-xs text-yl-gray-500">{helpText}</p>
+  {/if}
 
   <!-- Error Message -->
   {#if error}

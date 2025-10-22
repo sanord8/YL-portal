@@ -25,6 +25,14 @@
   let error = '';
   let fieldErrors: Record<string, string> = {};
 
+  // Area assignment state
+  let availableAreas: any[] = [];
+  let selectedAreaId = '';
+  let isLoadingAreas = false;
+  let isAssigningArea = false;
+  let isUnassigningArea = false;
+  let areaError = '';
+
   // Track changes
   $: hasChanges = originalData && (
     name.trim() !== originalData.name ||
@@ -39,8 +47,14 @@
   $: emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   $: formValid = nameValid && emailValid && hasChanges;
 
+  // Get unassigned areas (areas not yet assigned to this user)
+  $: unassignedAreas = availableAreas.filter(
+    (area) => !originalData?.userAreas?.some((ua: any) => ua.areaId === area.id)
+  );
+
   onMount(async () => {
     await loadUser();
+    await loadAvailableAreas();
   });
 
   async function loadUser() {
@@ -147,6 +161,63 @@
       hour: '2-digit',
       minute: '2-digit',
     });
+  }
+
+  async function loadAvailableAreas() {
+    try {
+      isLoadingAreas = true;
+      availableAreas = await trpc.area.listAll.query();
+    } catch (err: any) {
+      console.error('Failed to load areas:', err);
+      areaError = 'Failed to load available areas';
+    } finally {
+      isLoadingAreas = false;
+    }
+  }
+
+  async function handleAssignArea() {
+    if (!selectedAreaId) return;
+
+    try {
+      isAssigningArea = true;
+      areaError = '';
+
+      await trpc.area.assignUser.mutate({
+        areaId: selectedAreaId,
+        userId: userId,
+      });
+
+      // Reload user data to refresh assigned areas
+      await loadUser();
+
+      // Reset selection
+      selectedAreaId = '';
+    } catch (err: any) {
+      console.error('Failed to assign area:', err);
+      areaError = err?.message || 'Failed to assign area to user';
+    } finally {
+      isAssigningArea = false;
+    }
+  }
+
+  async function handleUnassignArea(areaId: string) {
+    try {
+      isUnassigningArea = true;
+      areaError = '';
+
+      await trpc.area.unassignUser.mutate({
+        areaId: areaId,
+        userId: userId,
+      });
+
+      // Reload user data to refresh assigned areas
+      await loadUser();
+    } catch (err: any) {
+      console.error('Failed to unassign area:', err);
+      areaError = err?.message || 'Failed to remove area from user';
+    } finally {
+      isUnassigningArea = false;
+    }
   }
 </script>
 
@@ -369,9 +440,60 @@
       </div>
 
       <!-- User Areas -->
-      {#if originalData.userAreas && originalData.userAreas.length > 0}
-        <div class="bg-white rounded-lg shadow border border-gray-200 p-4 sm:p-6">
-          <h3 class="text-sm font-medium text-yl-gray-900 mb-4">Assigned Areas</h3>
+      <div class="bg-white rounded-lg shadow border border-gray-200 p-4 sm:p-6">
+        <h3 class="text-sm font-medium text-yl-gray-900 mb-4">Area Assignments</h3>
+
+        <!-- Area Error -->
+        {#if areaError}
+          <div class="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+            <p class="text-xs text-red-800">{areaError}</p>
+          </div>
+        {/if}
+
+        <!-- Assign New Area -->
+        <div class="mb-6 pb-6 border-b border-gray-200">
+          <label for="areaSelect" class="block text-xs font-medium text-yl-gray-700 mb-2">
+            Assign New Area
+          </label>
+          <div class="flex gap-2">
+            <select
+              id="areaSelect"
+              bind:value={selectedAreaId}
+              disabled={isLoadingAreas || isAssigningArea}
+              class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yl-green focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+            >
+              <option value="">
+                {#if isLoadingAreas}
+                  Loading areas...
+                {:else if unassignedAreas.length === 0}
+                  All areas assigned
+                {:else}
+                  Select an area...
+                {/if}
+              </option>
+              {#each unassignedAreas as area}
+                <option value={area.id}>{area.name} ({area.code})</option>
+              {/each}
+            </select>
+            <Button
+              type="button"
+              variant="primary"
+              size="md"
+              on:click={handleAssignArea}
+              disabled={!selectedAreaId || isAssigningArea || isLoadingAreas}
+              loading={isAssigningArea}
+            >
+              {#if isAssigningArea}
+                Adding...
+              {:else}
+                Add
+              {/if}
+            </Button>
+          </div>
+        </div>
+
+        <!-- Assigned Areas List -->
+        {#if originalData.userAreas && originalData.userAreas.length > 0}
           <div class="space-y-2">
             {#each originalData.userAreas as userArea}
               <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 bg-gray-50 rounded-lg gap-2">
@@ -383,11 +505,23 @@
                     {userArea.role.name} • {userArea.areaRole}
                   </p>
                 </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  on:click={() => handleUnassignArea(userArea.areaId)}
+                  disabled={isUnassigningArea}
+                  class="flex-shrink-0"
+                >
+                  Remove
+                </Button>
               </div>
             {/each}
           </div>
-        </div>
-      {/if}
+        {:else}
+          <p class="text-sm text-yl-gray-600 text-center py-4">No areas assigned yet</p>
+        {/if}
+      </div>
     </form>
   {/if}
 </div>

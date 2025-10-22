@@ -239,7 +239,7 @@
         {#if validationErrors.budget}
           <p class="text-xs text-red-600 mt-1">{validationErrors.budget}</p>
         {:else}
-          <p class="text-xs text-yl-gray-600 mt-1">Annual budget for this area</p>
+          <p class="text-xs text-yl-gray-600 mt-1">Current budget for this area</p>
         {/if}
       </div>
     </div>

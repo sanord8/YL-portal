@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { router, protectedProcedure, verifiedProcedure } from '../trpc';
+import { router, protectedProcedure, verifiedProcedure, createPermissionProcedure } from '../trpc';
 import { TRPCError } from '@trpc/server';
 import { prisma } from '../../db/prisma';
 
@@ -165,9 +165,9 @@ export const areaRouter = router({
 
   /**
    * Create new area
-   * TODO: Restrict to admin users
+   * Requires area:create permission (typically admin only)
    */
-  create: verifiedProcedure
+  create: createPermissionProcedure('area', 'create')
     .input(
       z.object({
         name: z.string().min(1).max(100),
@@ -219,9 +219,9 @@ export const areaRouter = router({
 
   /**
    * Update area
-   * TODO: Restrict to admin users
+   * Requires area:update permission (typically admin only)
    */
-  update: verifiedProcedure
+  update: createPermissionProcedure('area', 'update')
     .input(
       z.object({
         id: z.string().uuid(),
@@ -275,9 +275,9 @@ export const areaRouter = router({
 
   /**
    * Delete area (soft delete)
-   * TODO: Restrict to admin users
+   * Requires area:delete permission (typically admin only)
    */
-  delete: verifiedProcedure
+  delete: createPermissionProcedure('area', 'delete')
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       // Check if area exists
@@ -318,9 +318,9 @@ export const areaRouter = router({
 
   /**
    * Assign user to area
-   * TODO: Restrict to admin users
+   * Requires area:manage_users permission (typically admin only)
    */
-  assignUser: verifiedProcedure
+  assignUser: createPermissionProcedure('area', 'manage_users')
     .input(
       z.object({
         areaId: z.string().uuid(),
@@ -384,9 +384,9 @@ export const areaRouter = router({
 
   /**
    * Unassign user from area
-   * TODO: Restrict to admin users
+   * Requires area:manage_users permission (typically admin only)
    */
-  unassignUser: verifiedProcedure
+  unassignUser: createPermissionProcedure('area', 'manage_users')
     .input(
       z.object({
         areaId: z.string().uuid(),

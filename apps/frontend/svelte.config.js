@@ -15,6 +15,17 @@ const config = {
       '@yl-portal/i18n': '../../packages/i18n/src',
     },
   },
+
+  // Suppress harmless warnings
+  onwarn: (warning, handler) => {
+    // Suppress "unknown prop" warnings for SvelteKit internal props like 'params'
+    if (warning.code === 'a11y-unknown-prop' ||
+        (warning.code === 'unknown-prop' && warning.message.includes('params'))) {
+      return;
+    }
+    // Let Svelte handle all other warnings normally
+    handler(warning);
+  },
 };
 
 export default config;

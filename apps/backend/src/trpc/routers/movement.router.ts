@@ -134,7 +134,7 @@ export const movementRouter = router({
               filename: true,
               mimeType: true,
               size: true,
-              url: true,
+              createdAt: true,
             },
           },
         },
@@ -172,7 +172,15 @@ export const movementRouter = router({
               email: true,
             },
           },
-          attachments: true,
+          attachments: {
+            select: {
+              id: true,
+              filename: true,
+              mimeType: true,
+              size: true,
+              createdAt: true,
+            },
+          },
           parent: {
             select: {
               id: true,

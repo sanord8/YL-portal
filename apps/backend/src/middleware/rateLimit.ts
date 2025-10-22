@@ -125,3 +125,8 @@ export async function closeRedis(): Promise<void> {
     redis.disconnect();
   }
 }
+
+/**
+ * Export Redis client for health checks and other utilities
+ */
+export { redis };

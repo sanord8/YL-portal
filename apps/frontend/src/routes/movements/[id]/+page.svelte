@@ -7,6 +7,10 @@
   import ApprovalStatusBadge from '$lib/components/ApprovalStatusBadge.svelte';
   import ApprovalHistoryTimeline from '$lib/components/ApprovalHistoryTimeline.svelte';
   import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+  import InfoDialog from '$lib/components/InfoDialog.svelte';
+  import FileUpload from '$lib/components/FileUpload.svelte';
+  import AttachmentList from '$lib/components/AttachmentList.svelte';
+  import { toastStore } from '$lib/stores/toastStore';
 
   $: movementId = $page.params.id;
 
@@ -20,6 +24,8 @@
   let isAreaManager = false;
   let showApproveDialog = false;
   let showRejectDialog = false;
+  let showApproveSuccess = false;
+  let showRejectSuccess = false;
   let approveComment = '';
   let rejectReason = '';
   let rejectComment = '';
@@ -31,6 +37,9 @@
   // Delete confirmation
   let showDeleteConfirm = false;
   let isDeleting = false;
+
+  // Attachments
+  let attachmentListRef: any;
 
   onMount(async () => {
     await loadMovement();
@@ -98,13 +107,13 @@
         comment: approveComment.trim() || undefined,
       });
 
-      alert('Movement approved successfully!');
       showApproveDialog = false;
       approveComment = '';
+      showApproveSuccess = true;
       await loadMovement();
       await loadApprovalHistory();
     } catch (err: any) {
-      alert(`Failed to approve movement: ${err.message}`);
+      toastStore.add(`Failed to approve movement: ${err.message}`, 'error');
     } finally {
       isApproving = false;
     }
@@ -121,14 +130,14 @@
         comment: rejectComment.trim() || undefined,
       });
 
-      alert('Movement rejected successfully!');
       showRejectDialog = false;
       rejectReason = '';
       rejectComment = '';
+      showRejectSuccess = true;
       await loadMovement();
       await loadApprovalHistory();
     } catch (err: any) {
-      alert(`Failed to reject movement: ${err.message}`);
+      toastStore.add(`Failed to reject movement: ${err.message}`, 'error');
     } finally {
       isRejecting = false;
     }
@@ -146,9 +155,9 @@
 
       newComment = '';
       await loadApprovalHistory();
-      alert('Comment added successfully!');
+      toastStore.add('Comment added successfully!', 'success');
     } catch (err: any) {
-      alert(`Failed to add comment: ${err.message}`);
+      toastStore.add(`Failed to add comment: ${err.message}`, 'error');
     } finally {
       isCommenting = false;
     }
@@ -162,7 +171,7 @@
       goto('/movements');
     } catch (err: any) {
       console.error('Failed to delete movement:', err);
-      alert(err.message || 'Failed to delete movement. Please try again.');
+      toastStore.add(err.message || 'Failed to delete movement. Please try again.', 'error');
     } finally {
       isDeleting = false;
       showDeleteConfirm = false;
@@ -211,6 +220,13 @@
 
   function handleBack() {
     goto('/movements');
+  }
+
+  function handleUploadSuccess() {
+    // Refresh the attachment list after successful upload
+    if (attachmentListRef) {
+      attachmentListRef.refresh();
+    }
   }
 </script>
 
@@ -727,3 +743,23 @@
     </div>
   </div>
 {/if}
+
+<!-- Approve Success Dialog -->
+<InfoDialog
+  open={showApproveSuccess}
+  title="Movement Approved"
+  message="The movement has been approved successfully. The submitter has been notified and the status has been updated."
+  variant="success"
+  okText="OK"
+  onOk={() => { showApproveSuccess = false; }}
+/>
+
+<!-- Reject Success Dialog -->
+<InfoDialog
+  open={showRejectSuccess}
+  title="Movement Rejected"
+  message="The movement has been rejected. The submitter has been notified and can review your feedback."
+  variant="warning"
+  okText="OK"
+  onOk={() => { showRejectSuccess = false; }}
+/>

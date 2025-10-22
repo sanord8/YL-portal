@@ -4,8 +4,7 @@
   import { onMount } from 'svelte';
   import { trpc } from '$lib/trpc';
   import FormInput from '$lib/components/FormInput.svelte';
-
-  let departmentId = $page.params.id;
+  import { toastStore } from '$lib/stores/toastStore';
 
   // Form fields
   let areaId = '';
@@ -20,9 +19,17 @@
   let isSaving = false;
   let error = '';
 
+  // Reactive department ID from route params
+  $: departmentId = $page.params.id;
+
+  // Reload data when department ID changes
+  $: if (departmentId) {
+    loadDepartment();
+  }
+
   onMount(async () => {
     await loadAreas();
-    await loadDepartment();
+    // Department load handled by reactive statement
   });
 
   async function loadAreas() {
@@ -63,21 +70,7 @@
   async function handleSubmit(event: Event) {
     event.preventDefault();
 
-    // Validate
-    if (!areaId) {
-      alert('Please select an area');
-      return;
-    }
-
-    if (!name.trim()) {
-      alert('Please enter a department name');
-      return;
-    }
-
-    if (!code.trim()) {
-      alert('Please enter a department code');
-      return;
-    }
+    // Validation is handled by HTML5 required attributes
 
     try {
       isSaving = true;
@@ -93,7 +86,7 @@
       // Navigate to detail page
       goto(`/departments/${departmentId}`);
     } catch (err: any) {
-      alert(`Failed to update department: ${err.message}`);
+      toastStore.add(`Failed to update department: ${err.message}`, 'error');
     } finally {
       isSaving = false;
     }

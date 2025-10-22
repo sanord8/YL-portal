@@ -4,9 +4,11 @@
   import Button from '$lib/components/Button.svelte';
   import BulkActionBar from '$lib/components/BulkActionBar.svelte';
   import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+  import InfoDialog from '$lib/components/InfoDialog.svelte';
   import { goto } from '$app/navigation';
   import { websocketStore } from '$lib/stores/websocketStore';
   import { toastStore } from '$lib/stores/toastStore';
+  import { authStore } from '$lib/stores/authStore';
   import { debounce } from '$lib/utils/debounce';
 
   // Movement data
@@ -37,9 +39,12 @@
   let isRejecting = false;
   let showBulkApproveDialog = false;
   let showBulkRejectDialog = false;
+  let showBulkApproveSuccess = false;
+  let showBulkRejectSuccess = false;
   let bulkApproveComment = '';
   let bulkRejectReason = '';
   let bulkRejectComment = '';
+  let bulkActionCount = 0;
   let isAreaManager = false;
 
   // Areas and departments for filter dropdowns
@@ -229,6 +234,10 @@
     goto('/movements/new');
   }
 
+  function handleBulkImport() {
+    goto('/movements/import');
+  }
+
   function handleViewMovement(id: string) {
     goto(`/movements/${id}`);
   }
@@ -276,18 +285,19 @@
   async function handleBulkApprove() {
     try {
       isApproving = true;
+      bulkActionCount = selectedMovementIds.size;
       await trpc.movement.bulkApprove.mutate({
         ids: Array.from(selectedMovementIds),
         comment: bulkApproveComment.trim() || undefined,
       });
-      alert(`Successfully approved ${selectedMovementIds.size} movements!`);
       selectedMovementIds = new Set();
       bulkApproveComment = '';
       showBulkApproveDialog = false;
+      showBulkApproveSuccess = true;
       await loadMovements();
     } catch (err: any) {
       console.error('Failed to bulk approve:', err);
-      alert(err.message || 'Failed to approve movements. Please try again.');
+      toastStore.add(err.message || 'Failed to approve movements. Please try again.', 'error');
     } finally {
       isApproving = false;
     }
@@ -297,20 +307,21 @@
   async function handleBulkReject() {
     try {
       isRejecting = true;
+      bulkActionCount = selectedMovementIds.size;
       await trpc.movement.bulkReject.mutate({
         ids: Array.from(selectedMovementIds),
         reason: bulkRejectReason.trim() || undefined,
         comment: bulkRejectComment.trim() || undefined,
       });
-      alert(`Successfully rejected ${selectedMovementIds.size} movements!`);
       selectedMovementIds = new Set();
       bulkRejectReason = '';
       bulkRejectComment = '';
       showBulkRejectDialog = false;
+      showBulkRejectSuccess = true;
       await loadMovements();
     } catch (err: any) {
       console.error('Failed to bulk reject:', err);
-      alert(err.message || 'Failed to reject movements. Please try again.');
+      toastStore.add(err.message || 'Failed to reject movements. Please try again.', 'error');
     } finally {
       isRejecting = false;
     }
@@ -445,12 +456,22 @@
       <h1 class="text-2xl sm:text-3xl font-bold text-yl-black">Financial Movements</h1>
       <p class="text-sm text-yl-gray-600 mt-1">Track and manage all financial transactions</p>
     </div>
-    <Button variant="primary" size="md" on:click={handleCreateMovement} class="w-full sm:w-auto">
-      <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-      </svg>
-      New Movement
-    </Button>
+    <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+      {#if $authStore.user?.isAdmin}
+        <Button variant="secondary" size="md" on:click={handleBulkImport} class="w-full sm:w-auto">
+          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          </svg>
+          Bulk Import
+        </Button>
+      {/if}
+      <Button variant="primary" size="md" on:click={handleCreateMovement} class="w-full sm:w-auto">
+        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+        </svg>
+        New Movement
+      </Button>
+    </div>
   </div>
 
   <!-- Filters -->
@@ -957,7 +978,7 @@
     showBulkApproveDialog = false;
     bulkApproveComment = '';
   }}
-  {isApproving}
+  isLoading={isApproving}
   disabled={isApproving}
 >
   <p class="text-sm text-yl-gray-600 mb-4">
@@ -992,7 +1013,7 @@
     bulkRejectReason = '';
     bulkRejectComment = '';
   }}
-  {isRejecting}
+  isLoading={isRejecting}
   disabled={isRejecting}
 >
   <p class="text-sm text-yl-gray-600 mb-4">
@@ -1028,3 +1049,23 @@
     </div>
   </div>
 </ConfirmDialog>
+
+<!-- Bulk Approve Success Dialog -->
+<InfoDialog
+  open={showBulkApproveSuccess}
+  title="Movements Approved"
+  message="Successfully approved {bulkActionCount} movement{bulkActionCount === 1 ? '' : 's'}. The changes have been reflected across the system."
+  variant="success"
+  okText="OK"
+  onOk={() => { showBulkApproveSuccess = false; }}
+/>
+
+<!-- Bulk Reject Success Dialog -->
+<InfoDialog
+  open={showBulkRejectSuccess}
+  title="Movements Rejected"
+  message="Successfully rejected {bulkActionCount} movement{bulkActionCount === 1 ? '' : 's'}. The submitters have been notified."
+  variant="warning"
+  okText="OK"
+  onOk={() => { showBulkRejectSuccess = false; }}
+/>

@@ -51,22 +51,27 @@
 {#if isOpen}
   <!-- Backdrop -->
   <div
-    class="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+    class="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden touch-none"
     on:click={onClose}
-    transition:fade={{ duration: 200 }}
+    on:touchstart|passive={onClose}
+    transition:fade={{ duration: 150 }}
     role="presentation"
+    style="will-change: opacity;"
   />
 
   <!-- Mobile Menu Panel -->
   <div
-    class="fixed top-0 right-0 bottom-0 w-64 bg-yl-black shadow-2xl z-50 md:hidden"
-    transition:fly={{ x: 300, duration: 300 }}
+    class="fixed top-0 right-0 bottom-0 w-64 bg-yl-black shadow-2xl z-50 md:hidden touch-pan-y"
+    transition:fly={{ x: 300, duration: 200 }}
+    style="will-change: transform;"
   >
     <!-- Close Button -->
     <div class="flex justify-end p-4">
       <button
         on:click={onClose}
-        class="text-white hover:text-yl-green-accent transition-colors p-2"
+        on:touchstart|passive
+        class="text-white active:text-yl-green-accent transition-colors p-2 min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation"
+        style="touch-action: manipulation;"
         aria-label="Close menu"
       >
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -91,7 +96,9 @@
               <a
                 href={item.href}
                 on:click={handleLinkClick}
-                class="block px-4 py-3 text-white hover:bg-yl-green hover:text-white rounded-lg transition-all duration-200 font-medium text-lg"
+                on:touchstart|passive
+                class="block px-4 py-3 min-h-[44px] flex items-center text-white active:bg-yl-green active:text-white rounded-lg transition-colors font-medium text-lg touch-manipulation"
+                style="touch-action: manipulation;"
               >
                 {item.label}
               </a>
@@ -103,7 +110,9 @@
         <div class="mt-4 px-4">
           <button
             on:click={handleLogout}
-            class="w-full px-4 py-3 text-red-400 hover:bg-red-900/20 rounded-lg transition-all duration-200 font-medium text-lg text-left"
+            on:touchstart|passive
+            class="w-full px-4 py-3 min-h-[44px] text-red-400 active:bg-red-900/20 rounded-lg transition-colors font-medium text-lg text-left touch-manipulation"
+            style="touch-action: manipulation;"
           >
             Logout
           </button>

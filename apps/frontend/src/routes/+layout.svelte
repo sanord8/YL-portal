@@ -8,8 +8,12 @@
   import UserDropdown from '$lib/components/UserDropdown.svelte';
   import Button from '$lib/components/Button.svelte';
   import ToastContainer from '$lib/components/ToastContainer.svelte';
+  import LoadingBar from '$lib/components/LoadingBar.svelte';
+  import { loadingStore } from '$lib/stores/loadingStore';
+  import { navigating } from '$app/stores';
 
   let isMobileMenuOpen = false;
+  let toggleTimeout: number | undefined;
 
   // Initialize auth and WebSocket on mount
   onMount(() => {
@@ -27,20 +31,28 @@
     }
   });
 
-  // Cleanup WebSocket on unmount
+  // Cleanup WebSocket and timers on unmount
   onDestroy(() => {
     if (browser) {
       websocketStore.disconnect();
     }
+    if (toggleTimeout) {
+      clearTimeout(toggleTimeout);
+    }
   });
 
   // Watch for authentication changes to connect/disconnect WebSocket
-  $: if (browser && $authStore.isAuthenticated && !$websocketStore.connected) {
-    const cookies = document.cookie.split(';');
-    const sessionCookie = cookies.find((c) => c.trim().startsWith('auth_session='));
-    if (sessionCookie) {
-      const sessionId = sessionCookie.split('=')[1];
-      websocketStore.connect(sessionId);
+  // Only re-run when authentication state actually changes
+  let lastAuthState = false;
+  $: if (browser && $authStore.isAuthenticated !== lastAuthState) {
+    lastAuthState = $authStore.isAuthenticated;
+    if ($authStore.isAuthenticated && !$websocketStore.connected) {
+      const cookies = document.cookie.split(';');
+      const sessionCookie = cookies.find((c) => c.trim().startsWith('auth_session='));
+      if (sessionCookie) {
+        const sessionId = sessionCookie.split('=')[1];
+        websocketStore.connect(sessionId);
+      }
     }
   }
 
@@ -49,15 +61,35 @@
   $: user = $authStore.user;
   $: needsEmailVerification = isAuthenticated && user && !user.emailVerified;
 
+  // Track navigation for loading bar
+  $: if ($navigating) {
+    loadingStore.start();
+  } else {
+    loadingStore.stop();
+  }
+
   let isResendingVerification = false;
   let resendMessage = '';
 
+  // Debounced toggle with requestAnimationFrame for smooth animation
   function toggleMobileMenu() {
-    isMobileMenuOpen = !isMobileMenuOpen;
+    if (toggleTimeout) {
+      return; // Prevent rapid toggling
+    }
+
+    requestAnimationFrame(() => {
+      isMobileMenuOpen = !isMobileMenuOpen;
+    });
+
+    toggleTimeout = setTimeout(() => {
+      toggleTimeout = undefined;
+    }, 300) as unknown as number;
   }
 
   function closeMobileMenu() {
-    isMobileMenuOpen = false;
+    requestAnimationFrame(() => {
+      isMobileMenuOpen = false;
+    });
   }
 
   async function resendVerificationEmail() {
@@ -87,6 +119,9 @@
 </script>
 
 <div class="min-h-screen bg-gray-50 flex flex-col">
+  <!-- Loading Bar -->
+  <LoadingBar show={$loadingStore} />
+
   <!-- Toast Container -->
   <ToastContainer />
 
@@ -194,7 +229,9 @@
         <!-- Mobile Menu Button -->
         <button
           on:click={toggleMobileMenu}
-          class="md:hidden text-white hover:text-yl-green-accent transition-colors p-2 -mr-2"
+          on:touchstart|passive
+          class="md:hidden text-white active:text-yl-green-accent transition-colors p-2 -mr-2 min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation"
+          style="touch-action: manipulation;"
           aria-label="Open menu"
           aria-expanded={isMobileMenuOpen}
         >
