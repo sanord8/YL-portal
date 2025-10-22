@@ -110,3 +110,5 @@ exports/
 *.backup
 *.bak
 *.old
+
+*.claude/
