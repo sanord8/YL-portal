@@ -1,137 +1,126 @@
-// Prisma Schema for YL Portal
-// Multi-tenant architecture with Row Level Security support
-
 generator client {
   provider        = "prisma-client-js"
-  binaryTargets   = ["native", "windows"]
   previewFeatures = ["multiSchema", "postgresqlExtensions"]
+  binaryTargets   = ["native", "windows"]
 }
 
 datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
-  extensions = [uuid_ossp(map: "uuid-ossp"), pgcrypto]
+  extensions = [pgcrypto, uuid_ossp(map: "uuid-ossp")]
 }
 
-// ============================================
-// AUTHENTICATION & USERS
-// ============================================
-
 model User {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email        String    @unique
-  name         String
-  passwordHash String    @map("password_hash")
+  id                   String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                String            @unique
+  name                 String
+  passwordHash         String            @map("password_hash")
+  emailVerified        Boolean           @default(false) @map("email_verified")
+  emailVerifyToken     String?           @unique @map("email_verify_token")
+  emailVerifyExpires   DateTime?         @map("email_verify_expires")
+  passwordResetToken   String?           @unique @map("password_reset_token")
+  passwordResetExpires DateTime?         @map("password_reset_expires")
+  twoFactorEnabled     Boolean           @default(false) @map("two_factor_enabled")
+  twoFactorSecret      String?           @map("two_factor_secret")
+  isAdmin              Boolean           @default(false) @map("is_admin")
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+  deletedAt            DateTime?         @map("deleted_at")
+  auditLogs            AuditLog[]
+  personalDepartments  Department[]      @relation("PersonalDepartment")
+  movementHistory      MovementHistory[]
+  approvedMovements    Movement[]        @relation("MovementApprover")
+  rejectedMovements    Movement[]        @relation("MovementRejector")
+  movements            Movement[]        @relation("MovementCreator")
+  sessions             Session[]
+  userAreas            UserArea[]
 
-  // Email verification
-  emailVerified       Boolean   @default(false) @map("email_verified")
-  emailVerifyToken    String?   @unique @map("email_verify_token")
-  emailVerifyExpires  DateTime? @map("email_verify_expires")
-
-  // Password reset
-  passwordResetToken  String?   @unique @map("password_reset_token")
-  passwordResetExpires DateTime? @map("password_reset_expires")
-
-  // Two-factor authentication
-  twoFactorEnabled Boolean @default(false) @map("two_factor_enabled")
-  twoFactorSecret String? @map("two_factor_secret")
-
-  // Admin flag
-  isAdmin      Boolean   @default(false) @map("is_admin")
-
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-  deletedAt    DateTime? @map("deleted_at") // Soft delete
-
-  // Relations
-  sessions          Session[]
-  userAreas         UserArea[]
-  movements         Movement[]          @relation("MovementCreator")
-  approvedMovements Movement[]          @relation("MovementApprover")
-  rejectedMovements Movement[]          @relation("MovementRejector")
-  movementApprovals MovementApproval[]
-  auditLogs         AuditLog[]
-
-  @@map("users")
   @@index([email])
   @@index([deletedAt])
   @@index([emailVerifyToken])
   @@index([passwordResetToken])
+  @@map("users")
 }
 
 model Session {
-  id         String   @id  // Removed @db.Uuid to support Lucia-style session IDs
+  id         String   @id
   userId     String   @map("user_id") @db.Uuid
   expiresAt  DateTime @map("expires_at")
-  rememberMe Boolean  @default(false) @map("remember_me") // Track "remember me" preference
+  rememberMe Boolean  @default(false) @map("remember_me")
+  createdAt  DateTime @default(now()) @map("created_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  createdAt DateTime @default(now()) @map("created_at")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("sessions")
   @@index([userId])
   @@index([expiresAt])
+  @@map("sessions")
 }
 
-// ============================================
-// MULTI-TENANT: AREAS & DEPARTMENTS
-// ============================================
+model BankAccount {
+  id                   String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                 String
+  accountNumber        String?
+  bankName             String?
+  currency             String     @default("EUR") @db.VarChar(3)
+  description          String?
+  createdAt            DateTime   @default(now()) @map("created_at")
+  updatedAt            DateTime   @updatedAt @map("updated_at")
+  deletedAt            DateTime?  @map("deleted_at")
+  areas                Area[]
+  destinationMovements Movement[] @relation("MovementDestinationAccount")
+  sourceMovements      Movement[] @relation("MovementSourceAccount")
+
+  @@index([deletedAt])
+  @@map("bank_accounts")
+}
 
 model Area {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name        String
-  code        String    @unique // e.g., "BCN", "MAD"
-  description String?
-  currency    String    @default("EUR") @db.VarChar(3)
+  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bankAccountId String?      @map("bank_account_id") @db.Uuid
+  name          String
+  code          String       @unique
+  description   String?
+  currency      String       @default("EUR") @db.VarChar(3)
+  budget        Int?
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  deletedAt     DateTime?    @map("deleted_at")
+  bankAccount   BankAccount? @relation(fields: [bankAccountId], references: [id])
+  departments   Department[]
+  movements     Movement[]
+  userAreas     UserArea[]
 
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  deletedAt   DateTime? @map("deleted_at")
-
-  // Relations
-  userAreas   UserArea[]
-  movements   Movement[]
-  departments Department[]
-
-  @@map("areas")
+  @@index([bankAccountId])
   @@index([code])
   @@index([deletedAt])
+  @@map("areas")
 }
 
 model Department {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  areaId      String    @map("area_id") @db.Uuid
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  areaId      String     @map("area_id") @db.Uuid
+  userId      String?    @map("user_id") @db.Uuid
   name        String
   code        String
   description String?
-
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  deletedAt   DateTime? @map("deleted_at")
-
-  // Relations
-  area      Area       @relation(fields: [areaId], references: [id], onDelete: Cascade)
-  movements Movement[]
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  deletedAt   DateTime?  @map("deleted_at")
+  area        Area       @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  user        User?      @relation("PersonalDepartment", fields: [userId], references: [id], onDelete: Cascade)
+  movements   Movement[]
 
   @@unique([areaId, code])
-  @@map("departments")
   @@index([areaId])
+  @@index([userId])
+  @@map("departments")
 }
 
-// ============================================
-// PERMISSIONS & ROLES (RBAC)
-// ============================================
-
 model Role {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name        String   @unique
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String           @unique
   description String?
-
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  // Relations
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
   permissions RolePermission[]
   userAreas   UserArea[]
 
@@ -139,44 +128,30 @@ model Role {
 }
 
 model Permission {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  resource    String   // e.g., "movement", "area", "report"
-  action      String   // e.g., "create", "read", "update", "delete", "distribute"
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  resource    String
+  action      String
   description String?
-
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  // Relations
-  roles RolePermission[]
+  createdAt   DateTime         @default(now()) @map("created_at")
+  roles       RolePermission[]
 
   @@unique([resource, action])
-  @@map("permissions")
   @@index([resource])
+  @@map("permissions")
 }
 
 model RolePermission {
-  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  roleId       String  @map("role_id") @db.Uuid
-  permissionId String  @map("permission_id") @db.Uuid
-
-  // Attribute-based access control conditions (JSON)
-  conditions   Json?   // e.g., {"amountLimit": 1000, "departmentIds": ["..."]}
-
-  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  roleId       String     @map("role_id") @db.Uuid
+  permissionId String     @map("permission_id") @db.Uuid
+  conditions   Json?
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@unique([roleId, permissionId])
-  @@map("role_permissions")
   @@index([roleId])
   @@index([permissionId])
-}
-
-enum AreaRole {
-  VIEWER  // Can view movements in area
-  MANAGER // Can approve/reject movements
-  ADMIN   // Full control over area
-
-  @@map("area_role")
+  @@map("role_permissions")
 }
 
 model UserArea {
@@ -184,26 +159,130 @@ model UserArea {
   userId    String   @map("user_id") @db.Uuid
   areaId    String   @map("area_id") @db.Uuid
   roleId    String   @map("role_id") @db.Uuid
-
-  // Simple role for quick permission checks (approval workflow)
   areaRole  AreaRole @default(MANAGER) @map("area_role")
-
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  area Area @relation(fields: [areaId], references: [id], onDelete: Cascade)
-  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  area      Area     @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, areaId])
-  @@map("user_areas")
   @@index([userId])
   @@index([areaId])
+  @@map("user_areas")
 }
 
-// ============================================
-// FINANCIAL: MOVEMENTS & TRANSACTIONS
-// ============================================
+model Movement {
+  id                       String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sourceBankAccountId      String            @map("source_bank_account_id") @db.Uuid
+  destinationBankAccountId String?           @map("destination_bank_account_id") @db.Uuid
+  areaId                   String            @map("area_id") @db.Uuid
+  departmentId             String?           @map("department_id") @db.Uuid
+  userId                   String            @map("user_id") @db.Uuid
+  type                     MovementType
+  status                   MovementStatus    @default(DRAFT)
+  amount                   Int
+  currency                 String            @default("EUR") @db.VarChar(3)
+  description              String
+  category                 String?
+  reference                String?
+  approvedBy               String?           @map("approved_by") @db.Uuid
+  approvedAt               DateTime?         @map("approved_at")
+  rejectedBy               String?           @map("rejected_by") @db.Uuid
+  rejectedAt               DateTime?         @map("rejected_at")
+  rejectionReason          String?           @map("rejection_reason")
+  parentId                 String?           @map("parent_id") @db.Uuid
+  isSplitParent            Boolean           @default(false) @map("is_split_parent")
+  isInternalTransfer       Boolean           @default(false) @map("is_internal_transfer")
+  transactionDate          DateTime          @map("transaction_date")
+  createdAt                DateTime          @default(now()) @map("created_at")
+  updatedAt                DateTime          @updatedAt @map("updated_at")
+  deletedAt                DateTime?         @map("deleted_at")
+  idempotencyKey           String?           @unique @map("idempotency_key")
+  attachments              Attachment[]
+  history                  MovementHistory[]
+  approver                 User?             @relation("MovementApprover", fields: [approvedBy], references: [id])
+  area                     Area              @relation(fields: [areaId], references: [id])
+  department               Department?       @relation(fields: [departmentId], references: [id])
+  destinationBankAccount   BankAccount?      @relation("MovementDestinationAccount", fields: [destinationBankAccountId], references: [id])
+  parent                   Movement?         @relation("MovementSplit", fields: [parentId], references: [id])
+  children                 Movement[]        @relation("MovementSplit")
+  rejector                 User?             @relation("MovementRejector", fields: [rejectedBy], references: [id])
+  sourceBankAccount        BankAccount       @relation("MovementSourceAccount", fields: [sourceBankAccountId], references: [id])
+  user                     User              @relation("MovementCreator", fields: [userId], references: [id])
+
+  @@index([transactionDate])
+  @@index([sourceBankAccountId])
+  @@index([destinationBankAccountId])
+  @@index([areaId, transactionDate])
+  @@index([userId])
+  @@index([departmentId])
+  @@index([type])
+  @@index([status])
+  @@index([isInternalTransfer])
+  @@index([isSplitParent])
+  @@index([parentId])
+  @@index([deletedAt])
+  @@map("movements")
+}
+
+model Attachment {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  movementId    String   @map("movement_id") @db.Uuid
+  filename      String
+  mimeType      String   @map("mime_type")
+  size          Int
+  fileData      Bytes    @map("file_data")
+  thumbnailData Bytes?   @map("thumbnail_data")
+  createdAt     DateTime @default(now()) @map("created_at")
+  movement      Movement @relation(fields: [movementId], references: [id], onDelete: Cascade)
+
+  @@index([movementId])
+  @@map("attachments")
+}
+
+model MovementHistory {
+  id         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  movementId String        @map("movement_id") @db.Uuid
+  userId     String        @map("user_id") @db.Uuid
+  action     HistoryAction
+  comment    String?
+  metadata   Json?         // Stores before/after values for changes (e.g., department/area changes)
+  createdAt  DateTime      @default(now()) @map("created_at")
+  movement   Movement      @relation(fields: [movementId], references: [id], onDelete: Cascade)
+  user       User          @relation(fields: [userId], references: [id])
+
+  @@index([movementId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("movement_history")
+}
+
+model AuditLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  action     String
+  resource   String
+  resourceId String   @map("resource_id") @db.Uuid
+  oldValues  Json?    @map("old_values")
+  newValues  Json?    @map("new_values")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+  user       User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([resource, resourceId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+enum AreaRole {
+  VIEWER
+  MANAGER
+  ADMIN
+
+  @@map("area_role")
+}
 
 enum MovementType {
   INCOME
@@ -215,135 +294,21 @@ enum MovementType {
 }
 
 enum MovementStatus {
-  PENDING
+  DRAFT
   APPROVED
-  REJECTED
   CANCELLED
 
   @@map("movement_status")
 }
 
-model Movement {
-  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  areaId          String         @map("area_id") @db.Uuid
-  departmentId    String?        @map("department_id") @db.Uuid
-  userId          String         @map("user_id") @db.Uuid
-
-  type            MovementType
-  status          MovementStatus @default(PENDING)
-  amount          Int            // Amount in cents for precision
-  currency        String         @default("EUR") @db.VarChar(3)
-  description     String
-  category        String?
-  reference       String?        // External reference number
-
-  // Approval tracking
-  approvedBy      String?        @map("approved_by") @db.Uuid
-  approvedAt      DateTime?      @map("approved_at")
-  rejectedBy      String?        @map("rejected_by") @db.Uuid
-  rejectedAt      DateTime?      @map("rejected_at")
-  rejectionReason String?        @map("rejection_reason")
-
-  // Distribution tracking
-  distributionId  String?        @map("distribution_id") @db.Uuid
-  parentId        String?        @map("parent_id") @db.Uuid // For distributed movements
-
-  // Dates
-  transactionDate DateTime       @map("transaction_date")
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
-  deletedAt       DateTime?      @map("deleted_at")
-
-  // Idempotency key for duplicate prevention
-  idempotencyKey  String?        @unique @map("idempotency_key")
-
-  // Relations
-  area            Area               @relation(fields: [areaId], references: [id])
-  department      Department?        @relation(fields: [departmentId], references: [id])
-  user            User               @relation("MovementCreator", fields: [userId], references: [id])
-  approver        User?              @relation("MovementApprover", fields: [approvedBy], references: [id])
-  rejector        User?              @relation("MovementRejector", fields: [rejectedBy], references: [id])
-  parent          Movement?          @relation("MovementDistribution", fields: [parentId], references: [id])
-  children        Movement[]         @relation("MovementDistribution")
-  attachments     Attachment[]
-  approvalHistory MovementApproval[]
-
-  @@map("movements")
-  @@index([transactionDate])  // Standalone index for date-range queries
-  @@index([areaId, transactionDate])
-  @@index([userId])
-  @@index([departmentId])
-  @@index([type])
-  @@index([status])
-  @@index([distributionId])
-  @@index([deletedAt])
-}
-
-model Attachment {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  movementId    String   @map("movement_id") @db.Uuid
-  filename      String
-  mimeType      String   @map("mime_type")
-  size          Int      // Size in bytes
-  fileData      Bytes    @map("file_data") // Binary file data stored in database
-  thumbnailData Bytes?   @map("thumbnail_data") // Optional thumbnail for images
-
-  createdAt     DateTime @default(now()) @map("created_at")
-
-  movement Movement @relation(fields: [movementId], references: [id], onDelete: Cascade)
-
-  @@map("attachments")
-  @@index([movementId])
-}
-
-enum ApprovalAction {
+enum HistoryAction {
   APPROVED
   REJECTED
   COMMENT
   EDITED
+  CATEGORIZED
+  SPLIT
+  FINALIZED
 
-  @@map("approval_action")
-}
-
-model MovementApproval {
-  id         String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  movementId String         @map("movement_id") @db.Uuid
-  userId     String         @map("user_id") @db.Uuid
-  action     ApprovalAction
-  comment    String?
-
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  movement Movement @relation(fields: [movementId], references: [id], onDelete: Cascade)
-  user     User     @relation(fields: [userId], references: [id])
-
-  @@map("movement_approvals")
-  @@index([movementId])
-  @@index([userId])
-  @@index([createdAt])
-}
-
-// ============================================
-// AUDIT TRAIL & LOGGING
-// ============================================
-
-model AuditLog {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId     String?  @map("user_id") @db.Uuid
-  action     String   // e.g., "CREATE", "UPDATE", "DELETE"
-  resource   String   // e.g., "movement", "user"
-  resourceId String   @map("resource_id") @db.Uuid
-
-  oldValues  Json?    @map("old_values")
-  newValues  Json?    @map("new_values")
-  metadata   Json?    // IP address, user agent, etc.
-
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
-
-  @@map("audit_logs")
-  @@index([userId])
-  @@index([resource, resourceId])
-  @@index([createdAt])
+  @@map("history_action")
 }

@@ -4,146 +4,114 @@ import { TRPCError } from '@trpc/server';
 
 /**
  * User Router
- * Operations for user management and search (for area/department assignment)
+ * Handles user profile operations
  */
 export const userRouter = router({
   /**
-   * List all users
-   * TODO: Add pagination and admin role check
+   * Get current user's profile
    */
-  list: protectedProcedure.query(async ({ ctx }) => {
-    const users = await ctx.prisma.user.findMany({
-      where: {
-        deletedAt: null,
-      },
+  getProfile: protectedProcedure.query(async ({ ctx }) => {
+    const user = await ctx.prisma.user.findUnique({
+      where: { id: ctx.user.id },
       select: {
         id: true,
         name: true,
         email: true,
+        isAdmin: true,
         emailVerified: true,
+        twoFactorEnabled: true,
         createdAt: true,
-        _count: {
+        updatedAt: true,
+        userAreas: {
           select: {
-            areas: true,
-            movements: true,
+            id: true,
+            areaRole: true,
+            area: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+              },
+            },
           },
         },
       },
-      orderBy: {
-        name: 'asc',
-      },
     });
 
-    return users;
+    if (!user) {
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: 'User not found',
+      });
+    }
+
+    return user;
   }),
 
   /**
-   * Search users by name or email
+   * Update current user's profile
+   * Users can only update their own profile (not admin fields)
    */
-  search: protectedProcedure
+  updateProfile: protectedProcedure
     .input(
       z.object({
-        query: z.string().min(1),
-        limit: z.number().min(1).max(50).default(10),
+        name: z.string().min(2, 'Name must be at least 2 characters').optional(),
+        email: z.string().email('Invalid email address').optional(),
       })
     )
-    .query(async ({ ctx, input }) => {
-      const users = await ctx.prisma.user.findMany({
-        where: {
-          deletedAt: null,
-          OR: [
-            { name: { contains: input.query, mode: 'insensitive' } },
-            { email: { contains: input.query, mode: 'insensitive' } },
-          ],
-        },
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.user.id;
+
+      // Validate at least one field is being updated
+      if (!input.name && !input.email) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'At least one field must be provided for update',
+        });
+      }
+
+      // If email is being updated, check for conflicts
+      if (input.email) {
+        const emailConflict = await ctx.prisma.user.findFirst({
+          where: {
+            email: input.email.toLowerCase(),
+            NOT: { id: userId },
+          },
+        });
+
+        if (emailConflict) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'A user with this email already exists',
+          });
+        }
+      }
+
+      // Prepare update data
+      const data: any = {};
+      if (input.name) data.name = input.name.trim();
+      if (input.email) {
+        data.email = input.email.toLowerCase();
+        // Reset email verification if email changes
+        data.emailVerified = false;
+      }
+
+      // Update user
+      const updatedUser = await ctx.prisma.user.update({
+        where: { id: userId },
+        data,
         select: {
           id: true,
           name: true,
           email: true,
-          emailVerified: true,
-        },
-        take: input.limit,
-        orderBy: {
-          name: 'asc',
-        },
-      });
-
-      return users;
-    }),
-
-  /**
-   * Get user by ID
-   */
-  getById: protectedProcedure
-    .input(z.object({ id: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
-      const user = await ctx.prisma.user.findUnique({
-        where: { id: input.id },
-        select: {
-          id: true,
-          name: true,
-          email: true,
+          isAdmin: true,
           emailVerified: true,
           twoFactorEnabled: true,
           createdAt: true,
           updatedAt: true,
-          areas: {
-            include: {
-              area: {
-                select: {
-                  id: true,
-                  name: true,
-                  code: true,
-                },
-              },
-            },
-          },
-          _count: {
-            select: {
-              movements: true,
-            },
-          },
         },
       });
 
-      if (!user || user.deletedAt) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'User not found',
-        });
-      }
-
-      return user;
-    }),
-
-  /**
-   * Get users not assigned to a specific area
-   * Useful for showing available users in assignment modal
-   */
-  getUnassigned: protectedProcedure
-    .input(z.object({ areaId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
-      // Get all users who are NOT assigned to this area
-      const users = await ctx.prisma.user.findMany({
-        where: {
-          deletedAt: null,
-          areas: {
-            none: {
-              areaId: input.areaId,
-            },
-          },
-        },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          emailVerified: true,
-        },
-        orderBy: {
-          name: 'asc',
-        },
-      });
-
-      return users;
+      return updatedUser;
     }),
 });

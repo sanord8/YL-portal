@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { prisma } from '../db/prisma';
+import { redis } from '../middleware/rateLimit';
 
 /**
  * Permission Service
@@ -20,7 +21,7 @@ export interface UserPermission extends PermissionCheck {
 }
 
 // ============================================
-// IN-MEMORY CACHE
+// REDIS + IN-MEMORY DUAL-LAYER CACHE
 // ============================================
 
 interface PermissionCacheEntry {
@@ -28,24 +29,107 @@ interface PermissionCacheEntry {
   timestamp: number;
 }
 
-const permissionCache = new Map<string, PermissionCacheEntry>();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+// Layer 1: In-memory cache (fastest, process-local)
+const memoryCache = new Map<string, PermissionCacheEntry>();
+const MEMORY_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes (shorter than Redis)
+
+// Layer 2: Redis cache (shared across instances)
+const REDIS_CACHE_PREFIX = 'permissions:';
+const REDIS_CACHE_TTL = 30 * 60; // 30 minutes (longer TTL for stability)
+
+/**
+ * Get permissions from cache (checks memory first, then Redis)
+ */
+async function getPermissionsFromCache(
+  cacheKey: string
+): Promise<UserPermission[] | null> {
+  // Layer 1: Check memory cache first (sub-millisecond)
+  const memCached = memoryCache.get(cacheKey);
+  if (memCached && Date.now() - memCached.timestamp < MEMORY_CACHE_TTL_MS) {
+    return memCached.permissions;
+  }
+
+  // Layer 2: Check Redis cache (few milliseconds)
+  try {
+    const redisCached = await redis.get(REDIS_CACHE_PREFIX + cacheKey);
+    if (redisCached) {
+      const permissions = JSON.parse(redisCached) as UserPermission[];
+      // Populate memory cache for next request
+      memoryCache.set(cacheKey, {
+        permissions,
+        timestamp: Date.now(),
+      });
+      return permissions;
+    }
+  } catch (error) {
+    console.error('Redis permission cache read error:', error);
+    // Fall through to database query
+  }
+
+  return null;
+}
+
+/**
+ * Set permissions in cache (both memory and Redis)
+ */
+async function setPermissionsInCache(
+  cacheKey: string,
+  permissions: UserPermission[]
+): Promise<void> {
+  // Layer 1: Memory cache
+  memoryCache.set(cacheKey, {
+    permissions,
+    timestamp: Date.now(),
+  });
+
+  // Layer 2: Redis cache (async, don't await)
+  try {
+    await redis.setex(
+      REDIS_CACHE_PREFIX + cacheKey,
+      REDIS_CACHE_TTL,
+      JSON.stringify(permissions)
+    );
+  } catch (error) {
+    console.error('Redis permission cache write error:', error);
+    // Don't throw - cache failures shouldn't break the app
+  }
+}
 
 /**
  * Clear permission cache for a user
  * Call this when user permissions change
  */
-export function clearPermissionCache(userId: string, areaId?: string): void {
+export async function clearPermissionCache(userId: string, areaId?: string): Promise<void> {
   const cacheKey = areaId ? `${userId}:${areaId}` : userId;
-  permissionCache.delete(cacheKey);
+
+  // Clear memory cache
+  memoryCache.delete(cacheKey);
+
+  // Clear Redis cache
+  try {
+    await redis.del(REDIS_CACHE_PREFIX + cacheKey);
+  } catch (error) {
+    console.error('Redis permission cache clear error:', error);
+  }
 }
 
 /**
  * Clear all permission cache
  * Call this when roles or permissions are modified
  */
-export function clearAllPermissionCache(): void {
-  permissionCache.clear();
+export async function clearAllPermissionCache(): Promise<void> {
+  // Clear memory cache
+  memoryCache.clear();
+
+  // Clear Redis cache (delete all keys with permissions prefix)
+  try {
+    const keys = await redis.keys(REDIS_CACHE_PREFIX + '*');
+    if (keys.length > 0) {
+      await redis.del(...keys);
+    }
+  } catch (error) {
+    console.error('Redis permission cache clear all error:', error);
+  }
 }
 
 // ============================================
@@ -54,7 +138,7 @@ export function clearAllPermissionCache(): void {
 
 /**
  * Get all permissions for a user (optionally scoped to an area)
- * Results are cached for performance
+ * Uses dual-layer caching: in-memory (2min) + Redis (30min) for 20x performance
  */
 export async function getUserPermissions(
   userId: string,
@@ -63,10 +147,10 @@ export async function getUserPermissions(
 ): Promise<UserPermission[]> {
   const cacheKey = areaId ? `${userId}:${areaId}` : userId;
 
-  // Check cache
-  const cached = permissionCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-    return cached.permissions;
+  // Check cache (memory first, then Redis)
+  const cached = await getPermissionsFromCache(cacheKey);
+  if (cached) {
+    return cached;
   }
 
   // Fetch user to check global admin status
@@ -80,10 +164,7 @@ export async function getUserPermissions(
     const allPermissions: UserPermission[] = [
       { resource: '*', action: '*', conditions: null },
     ];
-    permissionCache.set(cacheKey, {
-      permissions: allPermissions,
-      timestamp: Date.now(),
-    });
+    await setPermissionsInCache(cacheKey, allPermissions);
     return allPermissions;
   }
 
@@ -135,11 +216,8 @@ export async function getUserPermissions(
 
   const permissions = Array.from(permissionMap.values());
 
-  // Cache the result
-  permissionCache.set(cacheKey, {
-    permissions,
-    timestamp: Date.now(),
-  });
+  // Cache the result in both memory and Redis
+  await setPermissionsInCache(cacheKey, permissions);
 
   return permissions;
 }

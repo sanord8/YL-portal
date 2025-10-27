@@ -21,11 +21,24 @@ export const importRouter = router({
   validateImport: protectedProcedure
     .input(
       z.object({
+        sourceBankAccountId: z.string().uuid(),
         fileData: z.string(), // Base64-encoded file
         fileName: z.string(),
       })
     )
     .mutation(async ({ ctx, input }): Promise<ImportValidationResult> => {
+      // Check if bank account exists
+      const bankAccount = await ctx.prisma.bankAccount.findUnique({
+        where: { id: input.sourceBankAccountId },
+      });
+
+      if (!bankAccount || bankAccount.deletedAt) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Bank account not found',
+        });
+      }
+
       try {
         // Decode base64 to buffer
         const buffer = Buffer.from(input.fileData, 'base64');
@@ -34,7 +47,8 @@ export const importRouter = router({
         const result = await validateImportFile(
           buffer,
           input.fileName,
-          ctx.user.id
+          ctx.user.id,
+          input.sourceBankAccountId
         );
 
         return result;
@@ -61,10 +75,12 @@ export const importRouter = router({
             amount: z.number(),
             type: z.enum(['INCOME', 'EXPENSE']),
             date: z.string().transform((val) => new Date(val)),
+            sourceBankAccountId: z.string().uuid(),
             areaId: z.string().uuid(),
             departmentId: z.string().uuid().optional(),
             category: z.string().optional(),
             reference: z.string().optional(),
+            needsCategorization: z.boolean(),
             errors: z.array(z.any()),
             warnings: z.array(z.any()),
           })
@@ -96,8 +112,9 @@ export const importRouter = router({
         const areaIds = [...new Set(rows.map((r) => r.areaId))];
 
         for (const areaId of areaIds) {
-          ctx.emit('movement:bulk_created', {
-            count: result.success,
+          ctx.emit('movement:draft_created', {
+            count: result.drafts,
+            needsCategorization: result.needsCategorization,
             areaId,
           });
         }

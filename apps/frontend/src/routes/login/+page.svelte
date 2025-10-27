@@ -34,12 +34,17 @@
     }
 
     // Use auth store to handle login
+    console.log('[Login] Attempting login for:', email);
     const result = await authStore.login(email, password, rememberMe);
+    console.log('[Login] Login result:', result);
 
     if (result.success) {
       // Redirect to dashboard on success
-      goto('/');
+      console.log('[Login] Success! Redirecting to dashboard...');
+      await goto('/');
+      isLoading = false;
     } else {
+      console.error('[Login] Login failed:', result.error);
       errors.general = result.error || 'Login failed. Please try again.';
       isLoading = false;
     }

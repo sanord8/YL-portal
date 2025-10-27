@@ -5,6 +5,11 @@ export default defineConfig({
   plugins: [sveltekit()],
   server: {
     port: 5173,
+    allowedHosts: [
+      '.ngrok-free.dev',     // Allow ngrok free tier domains
+      '.ngrok-free.app',     // Allow alternative ngrok domains
+      '.ngrok.io',           // Allow legacy ngrok domains
+    ],
     proxy: {
       '/api': {
         target: 'http://localhost:3000',

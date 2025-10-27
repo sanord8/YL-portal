@@ -14,8 +14,12 @@
     "clean": "rm -rf .svelte-kit node_modules"
   },
   "dependencies": {
+    "@tanstack/svelte-query": "^5.90.2",
     "@trpc/client": "^10.45.1",
+    "pdfmake": "^0.2.20",
     "svelte-i18n": "^4.0.0",
+    "svelte-select": "^5.8.3",
+    "xlsx": "^0.18.5",
     "zod": "^3.22.4"
   },
   "devDependencies": {

@@ -13,6 +13,36 @@ async function main() {
   console.log('🌱 Starting database seeding...');
 
   // ============================================
+  // BANK ACCOUNTS
+  // ============================================
+
+  console.log('🏦 Creating bank accounts...');
+
+  const bankAccounts = [
+    { name: 'Catalunya', currency: 'EUR', description: 'Catalan region bank account' },
+    { name: 'Madrid', currency: 'EUR', description: 'Madrid region bank account' },
+    { name: 'Andalucia', currency: 'EUR', description: 'Andalucian region bank account' },
+    { name: 'Torrevieja', currency: 'EUR', description: 'Torrevieja bank account' },
+    { name: 'Euskadi', currency: 'EUR', description: 'Basque region bank account' },
+    { name: 'Valencia', currency: 'EUR', description: 'Valencian region bank account' },
+  ];
+
+  for (const account of bankAccounts) {
+    // Check if bank account already exists
+    const existing = await prisma.bankAccount.findFirst({
+      where: { name: account.name },
+    });
+
+    if (!existing) {
+      await prisma.bankAccount.create({
+        data: account,
+      });
+    }
+  }
+
+  console.log(`✅ Created ${bankAccounts.length} bank accounts`);
+
+  // ============================================
   // PERMISSIONS
   // ============================================
 
@@ -237,11 +267,13 @@ async function main() {
   // SUMMARY
   // ============================================
 
+  const bankAccountCount = await prisma.bankAccount.count();
   const roleCount = await prisma.role.count();
   const permissionCount = await prisma.permission.count();
   const rolePermissionCount = await prisma.rolePermission.count();
 
   console.log('\n📊 Seeding Summary:');
+  console.log(`   Bank Accounts: ${bankAccountCount}`);
   console.log(`   Roles: ${roleCount}`);
   console.log(`   Permissions: ${permissionCount}`);
   console.log(`   Role-Permission Mappings: ${rolePermissionCount}`);

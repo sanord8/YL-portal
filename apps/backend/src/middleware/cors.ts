@@ -7,11 +7,21 @@ const allowedOrigins = [
   process.env.FRONTEND_URL || '',
 ].filter(Boolean);
 
+// Helper to check if origin is an ngrok domain
+const isNgrokDomain = (origin: string): boolean => {
+  return /^https:\/\/[a-z0-9-]+\.ngrok-free\.app$/i.test(origin);
+};
+
 export const corsMiddleware = cors({
   origin: (origin) => {
     if (!origin) return null; // Allow requests with no origin (like mobile apps)
 
     if (allowedOrigins.includes(origin)) {
+      return origin;
+    }
+
+    // Allow ngrok domains for development (temporary tunneling)
+    if (process.env.NODE_ENV !== 'production' && isNgrokDomain(origin)) {
       return origin;
     }
 

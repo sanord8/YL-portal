@@ -17,10 +17,12 @@ export interface ImportRow {
   amount: number;
   type: 'INCOME' | 'EXPENSE';
   date: Date;
+  sourceBankAccountId: string; // Bank account being imported
   areaId: string;
   departmentId?: string;
   category?: string;
   reference?: string;
+  needsCategorization: boolean; // True if department is missing or invalid
   errors: ImportValidationError[];
   warnings: ImportValidationError[];
 }
@@ -36,7 +38,7 @@ export interface ImportValidationResult {
   warnings: ImportValidationError[];
 }
 
-// Column mapping (supports multiple languages and variations)
+// Column mapping (supports multiple languages and bank export variations)
 const COLUMN_MAPPINGS = {
   description: [
     'description',
@@ -45,10 +47,40 @@ const COLUMN_MAPPINGS = {
     'desc',
     'concepto',
     'concept',
+    'descripción',
+    'detalle',
+    'observaciones',
+    'remarks',
+    'details',
   ],
-  amount: ['amount', 'cantidad', 'quantitat', 'importe', 'monto', 'valor'],
-  type: ['type', 'tipo', 'tipus', 'kind'],
-  date: ['date', 'fecha', 'data', 'fecha de transacción', 'transaction date'],
+  amount: [
+    'amount',
+    'cantidad',
+    'quantitat',
+    'importe',
+    'monto',
+    'valor',
+    'total',
+    'sum',
+  ],
+  // Amount credit/debit columns (for bank exports with separate columns)
+  amountDebit: ['debe', 'debit', 'débito', 'cargo', 'salida', 'gasto'],
+  amountCredit: ['haber', 'credit', 'crédito', 'abono', 'entrada', 'ingreso'],
+  type: ['type', 'tipo', 'tipus', 'kind', 'movimiento'],
+  date: [
+    'date',
+    'fecha',
+    'data',
+    'fecha de transacción',
+    'transaction date',
+    'fecha operación',
+    'fecha operacion',
+    'fecha valor',
+    'f. operacion',
+    'f. valor',
+    'operation date',
+    'value date',
+  ],
   area: ['area', 'área', 'àrea', 'zone', 'zona'],
   department: [
     'department',
@@ -58,8 +90,18 @@ const COLUMN_MAPPINGS = {
     'dpto',
     'depto',
   ],
-  category: ['category', 'categoria', 'categoría', 'cat'],
-  reference: ['reference', 'referencia', 'referència', 'ref', 'numero'],
+  category: ['category', 'categoria', 'categoría', 'cat', 'clase'],
+  reference: [
+    'reference',
+    'referencia',
+    'referència',
+    'ref',
+    'numero',
+    'número',
+    'nº',
+    'num',
+    'transaction id',
+  ],
 };
 
 // Type mappings (supports translations)
@@ -125,27 +167,49 @@ function findColumn(
 }
 
 /**
- * Parse date from various formats
+ * Parse date from various formats (enhanced for bank exports)
  */
-function parseDate(dateString: string): Date | null {
+function parseDate(dateString: string | number): Date | null {
+  // Handle Excel serial dates (numbers)
+  if (typeof dateString === 'number') {
+    // Excel date serial: days since 1900-01-01 (with bug: treats 1900 as leap year)
+    const excelEpoch = new Date(1899, 11, 30); // Dec 30, 1899
+    const date = new Date(excelEpoch.getTime() + dateString * 86400000);
+    if (isValid(date)) {
+      return date;
+    }
+    return null;
+  }
+
   if (!dateString || typeof dateString !== 'string') {
     return null;
   }
 
+  const trimmed = dateString.trim();
+
+  // Extended date formats (including Spanish bank formats)
   const dateFormats = [
     'dd/MM/yyyy',
-    'MM/dd/yyyy',
-    'yyyy-MM-dd',
+    'dd/MM/yy',
     'dd-MM-yyyy',
-    'MM-dd-yyyy',
-    'yyyy/MM/dd',
+    'dd-MM-yy',
     'dd.MM.yyyy',
+    'dd.MM.yy',
+    'MM/dd/yyyy',
+    'MM/dd/yy',
+    'yyyy-MM-dd',
+    'yyyy/MM/dd',
+    'MM-dd-yyyy',
+    'd/M/yyyy',
+    'd/M/yy',
+    'd-M-yyyy',
+    'd-M-yy',
   ];
 
   // Try parsing with each format
   for (const format of dateFormats) {
     try {
-      const parsed = parse(dateString.trim(), format, new Date());
+      const parsed = parse(trimmed, format, new Date());
       if (isValid(parsed)) {
         return parsed;
       }
@@ -156,7 +220,7 @@ function parseDate(dateString: string): Date | null {
 
   // Try ISO format
   try {
-    const parsed = parseISO(dateString.trim());
+    const parsed = parseISO(trimmed);
     if (isValid(parsed)) {
       return parsed;
     }
@@ -168,21 +232,31 @@ function parseDate(dateString: string): Date | null {
 }
 
 /**
- * Parse amount (handles different decimal separators)
+ * Parse amount (handles different decimal separators and negative values)
  */
-function parseAmount(amountString: string | number): number | null {
+function parseAmount(amountString: string | number, allowNegative = false): { amount: number; isNegative: boolean } | null {
+  let isNegative = false;
+
   if (typeof amountString === 'number') {
-    return amountString > 0 ? amountString : null;
+    isNegative = amountString < 0;
+    const absAmount = Math.abs(amountString);
+    return absAmount > 0 ? { amount: absAmount, isNegative } : null;
   }
 
   if (!amountString || typeof amountString !== 'string') {
     return null;
   }
 
-  // Remove currency symbols and spaces
-  let cleaned = amountString
+  // Check for negative sign or parentheses (accounting format)
+  const originalString = amountString.trim();
+  isNegative = originalString.startsWith('-') ||
+               originalString.startsWith('(') && originalString.endsWith(')');
+
+  // Remove currency symbols, spaces, and negative indicators
+  let cleaned = originalString
     .replace(/[€$£¥₹]/g, '')
-    .replace(/\s/g, '')
+    .replace(/[\s()]/g, '')
+    .replace(/^-/, '')
     .trim();
 
   // Handle European format (1.000,50) vs US format (1,000.50)
@@ -211,7 +285,11 @@ function parseAmount(amountString: string | number): number | null {
   }
 
   const amount = parseFloat(cleaned);
-  return !isNaN(amount) && amount > 0 ? amount : null;
+  if (isNaN(amount) || amount === 0) {
+    return null;
+  }
+
+  return { amount: Math.abs(amount), isNegative };
 }
 
 /**
@@ -232,7 +310,8 @@ function normalizeType(typeString: string): 'INCOME' | 'EXPENSE' | null {
 export async function validateImportFile(
   buffer: Buffer,
   filename: string,
-  userId: string
+  userId: string,
+  sourceBankAccountId: string
 ): Promise<ImportValidationResult> {
   // Parse file
   let rawData: any[];
@@ -330,6 +409,8 @@ export async function validateImportFile(
     // Extract fields
     const descCol = findColumn(rawRow, COLUMN_MAPPINGS.description);
     const amountCol = findColumn(rawRow, COLUMN_MAPPINGS.amount);
+    const amountDebitCol = findColumn(rawRow, COLUMN_MAPPINGS.amountDebit);
+    const amountCreditCol = findColumn(rawRow, COLUMN_MAPPINGS.amountCredit);
     const typeCol = findColumn(rawRow, COLUMN_MAPPINGS.type);
     const dateCol = findColumn(rawRow, COLUMN_MAPPINGS.date);
     const areaCol = findColumn(rawRow, COLUMN_MAPPINGS.area);
@@ -356,9 +437,35 @@ export async function validateImportFile(
       });
     }
 
-    // Validate amount
-    const amount = parseAmount(amountCol?.value);
-    if (amount === null) {
+    // Validate amount - handle single column or debit/credit columns
+    let amount: number | null = null;
+    let type: 'INCOME' | 'EXPENSE' | null = null;
+    let amountIsNegative = false;
+
+    // Try debit/credit columns first (bank export format)
+    if (amountDebitCol?.value || amountCreditCol?.value) {
+      const debitParsed = amountDebitCol?.value ? parseAmount(amountDebitCol.value, true) : null;
+      const creditParsed = amountCreditCol?.value ? parseAmount(amountCreditCol.value, true) : null;
+
+      if (debitParsed && debitParsed.amount > 0) {
+        amount = debitParsed.amount;
+        type = 'EXPENSE';
+      } else if (creditParsed && creditParsed.amount > 0) {
+        amount = creditParsed.amount;
+        type = 'INCOME';
+      }
+    }
+
+    // Fall back to single amount column
+    if (amount === null && amountCol?.value) {
+      const parsed = parseAmount(amountCol.value, true);
+      if (parsed) {
+        amount = parsed.amount;
+        amountIsNegative = parsed.isNegative;
+      }
+    }
+
+    if (amount === null || amount === 0) {
       rowErrors.push({
         row: rowNumber,
         column: 'Amount',
@@ -377,16 +484,39 @@ export async function validateImportFile(
       });
     }
 
-    // Validate type
-    const type = normalizeType(typeCol?.value);
+    // Validate type - auto-detect from negative amounts if not specified
     if (!type) {
-      rowErrors.push({
-        row: rowNumber,
-        column: 'Type',
-        message: 'Invalid or missing type (must be INCOME or EXPENSE)',
-        severity: 'error',
-        value: typeCol?.value,
-      });
+      const typeValue = normalizeType(typeCol?.value);
+
+      if (typeValue) {
+        type = typeValue;
+      } else if (amountIsNegative) {
+        // Auto-detect: negative amount = expense
+        type = 'EXPENSE';
+        rowWarnings.push({
+          row: rowNumber,
+          column: 'Type',
+          message: 'Type auto-detected as EXPENSE from negative amount',
+          severity: 'warning',
+        });
+      } else if (!typeCol?.value) {
+        // No type column and positive amount - default to EXPENSE with warning
+        type = 'EXPENSE';
+        rowWarnings.push({
+          row: rowNumber,
+          column: 'Type',
+          message: 'Type not specified - defaulting to EXPENSE',
+          severity: 'warning',
+        });
+      } else {
+        rowErrors.push({
+          row: rowNumber,
+          column: 'Type',
+          message: 'Invalid type (must be INCOME or EXPENSE)',
+          severity: 'error',
+          value: typeCol?.value,
+        });
+      }
     }
 
     // Validate date
@@ -435,8 +565,9 @@ export async function validateImportFile(
       });
     }
 
-    // Validate department (optional)
+    // Validate department (optional - warning if missing or invalid)
     let department = null;
+    let needsCategorization = false;
     const departmentCode = departmentCol?.value?.toString().trim() || '';
 
     if (departmentCode && area) {
@@ -451,14 +582,24 @@ export async function validateImportFile(
       }
 
       if (!department) {
-        rowErrors.push({
+        rowWarnings.push({
           row: rowNumber,
           column: 'Department',
-          message: `Department '${departmentCode}' not found in area '${area.code}'`,
-          severity: 'error',
+          message: `Department '${departmentCode}' not found - will need categorization after import`,
+          severity: 'warning',
           value: departmentCode,
         });
+        needsCategorization = true;
       }
+    } else if (!departmentCode) {
+      // No department specified - needs categorization
+      rowWarnings.push({
+        row: rowNumber,
+        column: 'Department',
+        message: 'Department not specified - will need categorization after import',
+        severity: 'warning',
+      });
+      needsCategorization = true;
     }
 
     // Optional fields
@@ -493,10 +634,12 @@ export async function validateImportFile(
       amount: amount || 0,
       type: type || 'EXPENSE',
       date: date || new Date(),
+      sourceBankAccountId,
       areaId: area?.id || '',
       departmentId: department?.id,
       category,
       reference,
+      needsCategorization,
       errors: rowErrors,
       warnings: rowWarnings,
     };
@@ -524,9 +667,17 @@ export async function executeImport(
   rows: ImportRow[],
   userId: string,
   skipInvalid = true
-): Promise<{ success: number; failed: number; errors: ImportValidationError[] }> {
+): Promise<{
+  success: number;
+  failed: number;
+  drafts: number;
+  needsCategorization: number;
+  errors: ImportValidationError[]
+}> {
   let success = 0;
   let failed = 0;
+  let drafts = 0;
+  let needsCategorization = 0;
   const errors: ImportValidationError[] = [];
 
   for (const row of rows) {
@@ -544,16 +695,24 @@ export async function executeImport(
           amount: Math.round(row.amount * 100), // Convert to cents
           type: row.type,
           transactionDate: row.date,
+          sourceBankAccountId: row.sourceBankAccountId,
+          destinationBankAccountId: null, // Bank imports don't have destination (single-sided entries)
+          isInternalTransfer: false, // Bank imports are external transactions
           areaId: row.areaId,
           departmentId: row.departmentId,
           category: row.category,
           reference: row.reference,
-          status: 'PENDING', // All imported movements start as pending
-          createdById: userId,
+          status: 'DRAFT', // All imported movements start as DRAFT
+          userId: userId,
         },
       });
 
       success++;
+      drafts++;
+
+      if (row.needsCategorization) {
+        needsCategorization++;
+      }
     } catch (error: any) {
       failed++;
       errors.push({
@@ -565,5 +724,5 @@ export async function executeImport(
     }
   }
 
-  return { success, failed, errors };
+  return { success, failed, drafts, needsCategorization, errors };
 }

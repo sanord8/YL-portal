@@ -23,7 +23,7 @@
     if (browser && $authStore.isAuthenticated) {
       // Get session ID from cookie
       const cookies = document.cookie.split(';');
-      const sessionCookie = cookies.find((c) => c.trim().startsWith('auth_session='));
+      const sessionCookie = cookies.find((c) => c.trim().startsWith('yl_session='));
       if (sessionCookie) {
         const sessionId = sessionCookie.split('=')[1];
         websocketStore.connect(sessionId);
@@ -48,7 +48,7 @@
     lastAuthState = $authStore.isAuthenticated;
     if ($authStore.isAuthenticated && !$websocketStore.connected) {
       const cookies = document.cookie.split(';');
-      const sessionCookie = cookies.find((c) => c.trim().startsWith('auth_session='));
+      const sessionCookie = cookies.find((c) => c.trim().startsWith('yl_session='));
       if (sessionCookie) {
         const sessionId = sessionCookie.split('=')[1];
         websocketStore.connect(sessionId);
@@ -177,7 +177,7 @@
           {#if isAuthenticated}
             <!-- Navigation links for authenticated users -->
             <a
-              href="/"
+              href="/dashboard"
               class="text-white hover:text-yl-green-accent transition-colors duration-200 font-medium"
             >
               Dashboard
